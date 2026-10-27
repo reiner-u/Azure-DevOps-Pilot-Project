@@ -38,7 +38,7 @@ Rules (reverse-engineered from one hand-converted example; see README.md):
   * Anything unusual is listed in the report's notes column instead of being silently guessed at.
 Needs only Python 3 and openpyxl (no Pillow).
 """
-import argparse, csv, datetime, glob, json, os, posixpath, re, sys, tempfile, zipfile
+import argparse, csv, datetime, difflib, glob, json, os, posixpath, re, sys, tempfile, zipfile
 import xml.etree.ElementTree as ET
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -67,7 +67,7 @@ HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Ex
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
 LANGS = [("EN", "EN Import"), ("FR", "FR Import")]
 LABEL = "docMetadata/LabelInfo.xml"
-TOOL_VERSION = "2026.10.27"
+TOOL_VERSION = "2026.10.27.1"
 
 M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -230,8 +230,8 @@ def cleanhdr(v):
     return re.sub(r"[\s\xa0]+", " ", str(v if v is not None else "")).strip()
 
 
-def classify(h):
-    """Header text -> (field, language). Matches by meaning so variants and typos of a header map to the same field."""
+def classify_exact(h):
+    """Header text -> (field, language) by pattern. Matches by meaning so wording variants of a header map to the same field."""
     h = cleanhdr(h).lower()
     if not h:
         return None, None
@@ -261,6 +261,36 @@ def classify(h):
     return None, None
 
 
+# Misspelled headers ("Pre-conditon", "Excution") are common in hand-edited documents. When no pattern matches, a header that is
+# very close to one of these words is read as that field. Short words are left out on purpose (too easy to mismatch).
+FUZZY_WORDS = (("precondition", "pre"), ("execution", "exe"), ("expectedresult", "exp"), ("description", "title"),
+               ("subject", "subject"), ("author", "author"), ("automated", "auto"))
+FUZZY_CUTOFF = 0.86
+
+
+def classify_fuzzy(h):
+    """Header text -> (field, language) for a near-miss spelling of a known header, else (None, None)."""
+    h = cleanhdr(h).lower()
+    squashed = re.sub(r"[^a-z]", "", h)
+    if len(squashed) < 6:
+        return None, None
+    best = (0.0, None)
+    for word, field in FUZZY_WORDS:
+        ratio = difflib.SequenceMatcher(None, squashed[:len(word) + 1], word).ratio()
+        if ratio > best[0]:
+            best = (ratio, field)
+    if best[0] < FUZZY_CUTOFF:
+        return None, None
+    if best[1] == "exp":
+        return "exp", ("FR" if re.search(r"\b(fr|fra|french|fran[cç]ais)\b", h) else ("EN" if re.search(r"\b(en|eng|english)\b", h) else None))
+    return best[1], None
+
+
+def classify(h):
+    """Exact patterns first, then the typo-tolerant fallback."""
+    return classify_exact(h) if classify_exact(h)[0] else classify_fuzzy(h)
+
+
 NEEDED = ("id", "title", "exe", "exp")
 FIELD_NAMES = dict(id="ID", br="business requirement", title="description", type="type", author="author", subject="subject",
                    pre="pre-condition", exe="execution", exp="expected result", exp_fr="French expected result",
@@ -272,10 +302,13 @@ def find_header(ws, scan=25):
     best = None
     for rnum, row in enumerate(ws.iter_rows(min_row=1, max_row=scan, values_only=True), start=1):
         cols = {}
+        fuzzy = []
         for i, v in enumerate(row):
             f, lang = classify(v)
             if f is None:
                 continue
+            if not classify_exact(v)[0]:
+                fuzzy.append((cleanhdr(v), f))
             if f == "exp":
                 cols.setdefault("exp_fr" if lang == "FR" else "exp", i)
             else:
@@ -289,7 +322,7 @@ def find_header(ws, scan=25):
             if len(cands) == 1:
                 cols["id"], guess = cands[0], cleanhdr(row[cands[0]])
         if best is None or len(cols) > best["score"]:
-            best = dict(row=rnum, cols=cols, headers=[cleanhdr(v) for v in row], score=len(cols), id_guess=guess)
+            best = dict(row=rnum, cols=cols, headers=[cleanhdr(v) for v in row], score=len(cols), id_guess=guess, fuzzy=fuzzy)
     if best is None:
         return dict(row=0, cols={}, headers=[], score=0, ok=False, missing=list(NEEDED))
     best["missing"] = [k for k in NEEDED if k not in best["cols"]]
@@ -656,6 +689,9 @@ def plan_variants(wb, notes):
                 notes.append(f"hidden sheet {ws.title!r} looks like a test sheet and was ignored")
                 continue
             fix_swapped_type_author(ws, hdr, notes)
+            for _h, _f in hdr.get("fuzzy", []):
+                if _f in hdr["cols"] or _f == "exp":
+                    notes.append(f"{ws.title}: header {_h!r} looks misspelled; read it as {FIELD_NAMES.get(_f, _f)} (check column_map)")
             if hdr.get("id_guess"):
                 notes.append(f"{ws.title}: no column is named like a test case ID; used {hdr['id_guess']!r} as the ID column (check column_map)")
             found.append((ws, hdr))

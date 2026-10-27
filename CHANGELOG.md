@@ -3,6 +3,9 @@
 Newest first. The version is `TOOL_VERSION` in `scripts/build_import_from_source.py` and shows in the window's title bar.
 Release zips are shared through a work channel, not GitHub.
 
+## 2026.10.27.1
+- Misspelled column headers are now read as what they obviously mean ("Pre-conditon", "Excution"). Before this, a document with a misspelled Execution header was skipped as "no test sheet recognised", and a misspelled Pre-condition header was copied into the Description instead of becoming steps. Each corrected header is listed in the report notes so it can be checked.
+
 ## 2026.10.27
 - The ADO Area Path now comes from `scripts/local_config.json` (not committed; copy `local_config.example.json`). Without it the placeholder is used and every report says so.
 - Clearer message when a document has no recognisable test sheet: it lists the sheets looked at and tells people what to send to whoever maintains the tool.
