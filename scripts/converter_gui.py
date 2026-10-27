@@ -46,6 +46,7 @@ class App(tk.Tk):
         for v in (self.source, self.imports, self.reports):     # first run next to a fresh exe: make the default folders
             if v.get().startswith(ROOT):
                 os.makedirs(v.get(), exist_ok=True)
+        self.area = tk.StringVar(value=cfg.get("area") or core.AREA)
         self.q = queue.Queue()
         self.busy = False
         self.rows = {}              # results by source file name
@@ -66,7 +67,7 @@ class App(tk.Tk):
     def save_settings(self):
         try:
             with open(SETTINGS, "w", encoding="utf-8") as fh:
-                json.dump(dict(source=self.source.get(), imports=self.imports.get(), reports=self.reports.get()), fh, indent=1)
+                json.dump(dict(source=self.source.get(), imports=self.imports.get(), reports=self.reports.get(), area=self.area.get()), fh, indent=1)
         except OSError:
             pass
 
@@ -86,6 +87,9 @@ class App(tk.Tk):
             ttk.Label(top, text=label).grid(row=r, column=0, sticky="w", **pad)
             ttk.Entry(top, textvariable=var).grid(row=r, column=1, sticky="ew", **pad)
             ttk.Button(top, text="Browse...", command=lambda v=var: self.browse(v)).grid(row=r, column=2, **pad)
+        ttk.Label(top, text="ADO Area Path").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Entry(top, textvariable=self.area).grid(row=3, column=1, sticky="ew", **pad)
+        ttk.Label(top, text="written on every test case; must already exist in ADO").grid(row=3, column=2, sticky="w", **pad)
 
         files = ttk.LabelFrame(self, text="1. Documents in the source folder (click [ ] to tick or untick)")
         files.pack(fill="both", expand=True, padx=8, pady=4)
@@ -209,6 +213,7 @@ class App(tk.Tk):
         if force and not dry and not messagebox.askyesno(
                 "New version", f"Build a new version (V2, V3...) for the {len(names)} ticked document(s)?\nExisting versions are kept."):
             return
+        self.area.set(core.set_area(self.area.get()))      # tidy it, and fall back to the default if blank
         self.save_settings()
         self.busy = True
         for b in self.buttons:

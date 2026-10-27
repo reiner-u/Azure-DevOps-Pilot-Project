@@ -61,7 +61,17 @@ def load_local_config():
 _CFG = load_local_config()
 AREA_PLACEHOLDER = "Project\\Area\\Path"
 AREA = _CFG.get("area_path") or AREA_PLACEHOLDER          # ADO Area Path written on every test case
+DEFAULT_AREA = AREA
 STATE = _CFG.get("state") or "Design"
+
+
+def set_area(path):
+    """Use this ADO Area Path for everything converted from now on (blank = the configured default).
+    Area Paths use backslashes; forward slashes and doubled or edge backslashes are tidied."""
+    global AREA
+    path = re.sub(r"\\+", r"\\", (path or "").strip().replace("/", "\\")).strip("\\")
+    AREA = path or DEFAULT_AREA
+    return AREA
 HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Expected", "Area Path", "Assigned To", "State",
            "Description"]
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
@@ -868,7 +878,7 @@ def default_label(imports_dir):
 def convert_file(fn, source_dir, imports_dir, force=False, dry_run=False, label_from=None):
     """Convert one file from source/. Never raises: always returns a report row (see write_report for the columns)."""
     path = os.path.join(source_dir, fn)
-    row = dict(source=fn, import_file="", status="", cases="", steps_per_case="", review="", sheets_used="", column_map="", notes="")
+    row = dict(source=fn, import_file="", area_path=AREA, status="", cases="", steps_per_case="", review="", sheets_used="", column_map="", notes="")
     if not fn.lower().endswith(".xlsx"):
         row["status"] = "skipped: not an .xlsx file (save older .xls / .xlsm files as .xlsx first)"
         return row
@@ -921,7 +931,7 @@ def run_all(source_dir, imports_dir, force, dry_run, label_from, only=None, prog
 def write_report(rows, folder):
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "conversion_report_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
-    cols = ["source", "import_file", "status", "cases", "steps_per_case", "review", "sheets_used", "column_map", "notes"]
+    cols = ["source", "import_file", "area_path", "status", "cases", "steps_per_case", "review", "sheets_used", "column_map", "notes"]
     with open(path, "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -942,10 +952,13 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--label-from")
+    ap.add_argument("--area", help="ADO Area Path to write on every test case (default: scripts/local_config.json)")
     ap.add_argument("--source-dir")
     ap.add_argument("--imports-dir")
     ap.add_argument("--reports-dir")
     a = ap.parse_args()
+    if a.area:
+        set_area(a.area)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     if a.all:
