@@ -1,0 +1,16 @@
+# DEFAULT DENY: nothing is tracked unless it is listed below.
+# Test documents, import workbooks, reports, the briefing, the sensitivity label, the Area Path config and the built exe
+# stay out of the repository by design. Check `git status` before every commit.
+*
+
+!.gitignore
+!README.md
+!convert_all.bat
+!convert_gui.bat
+!build_exe.bat
+
+!scripts/
+scripts/*
+!scripts/build_import_from_source.py
+!scripts/converter_gui.py
+!scripts/local_config.example.json
