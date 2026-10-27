@@ -67,7 +67,7 @@ HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Ex
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
 LANGS = [("EN", "EN Import"), ("FR", "FR Import")]
 LABEL = "docMetadata/LabelInfo.xml"
-TOOL_VERSION = "2026.10.26"
+TOOL_VERSION = "2026.10.27"
 
 M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"

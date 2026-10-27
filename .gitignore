@@ -5,6 +5,7 @@
 
 !.gitignore
 !README.md
+!CHANGELOG.md
 !convert_all.bat
 !convert_gui.bat
 !build_exe.bat
