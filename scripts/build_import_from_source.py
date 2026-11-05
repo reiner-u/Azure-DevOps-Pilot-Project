@@ -58,26 +58,49 @@ def load_local_config():
     return {}
 
 
+def tidy_area(path):
+    """Area Paths use backslashes; forward slashes and doubled or edge backslashes are tidied."""
+    return re.sub(r"\\+", r"\\", (path or "").strip().replace("/", "\\")).strip("\\")
+
+
 _CFG = load_local_config()
 AREA_PLACEHOLDER = "Project\\Area\\Path"
-AREA = _CFG.get("area_path") or AREA_PLACEHOLDER          # ADO Area Path written on every test case
-DEFAULT_AREA = AREA
+# The Area Path is ROOT\rest. The root (the ADO project's own area, the same for everyone) is fixed in the window and comes from
+# local_config.json ("area_root"); the rest ("area_rest") is typed per run and this is its default. An older config with only
+# "area_path" is split at its first backslash.
+_old = tidy_area(_CFG.get("area_path"))
+AREA_ROOT = tidy_area(_CFG.get("area_root")) or (_old.split("\\")[0] if _old else "Project")
+AREA_REST = tidy_area(_CFG.get("area_rest")) if "area_rest" in _CFG else (_old.partition("\\")[2] if _old else "Area\\Path")
 STATE = _CFG.get("state") or "Design"
 
 
+def compose_area(rest):
+    """ROOT, or ROOT\\rest. A leading copy of the root typed into the box is not repeated."""
+    rest = tidy_area(rest)
+    if rest.lower() == AREA_ROOT.lower():
+        rest = ""
+    elif rest.lower().startswith(AREA_ROOT.lower() + "\\"):
+        rest = rest[len(AREA_ROOT) + 1:]
+    return AREA_ROOT + ("\\" + rest if rest else "")
+
+
+DEFAULT_AREA = compose_area(AREA_REST)
+AREA = DEFAULT_AREA                                      # ADO Area Path written on every test case
+
+
 def set_area(path):
-    """Use this ADO Area Path for everything converted from now on (blank = the configured default).
-    Area Paths use backslashes; forward slashes and doubled or edge backslashes are tidied."""
+    """Use this full ADO Area Path for everything converted from now on (blank = the configured default).
+    A path that does not start with the root gets the root put in front."""
     global AREA
-    path = re.sub(r"\\+", r"\\", (path or "").strip().replace("/", "\\")).strip("\\")
-    AREA = path or DEFAULT_AREA
+    path = tidy_area(path)
+    AREA = compose_area(path) if path else DEFAULT_AREA
     return AREA
 HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Expected", "Area Path", "Assigned To", "State",
            "Description"]
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
 LANGS = [("EN", "EN Import"), ("FR", "FR Import")]
 LABEL = "docMetadata/LabelInfo.xml"
-TOOL_VERSION = "2026.10.27.1"
+TOOL_VERSION = "2026.11.05"
 
 M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"

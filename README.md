@@ -19,7 +19,7 @@ Folders next to the scripts: `source/` (your documents), `imports/` (results), `
 
 ## Configuration
 
-Copy `scripts/local_config.example.json` to `scripts/local_config.json` and set `area_path` (the ADO Area Path written on every test case).
+Copy `scripts/local_config.example.json` to `scripts/local_config.json` and set `area_root` (the fixed first part of the ADO Area Path, shown as a locked label in the window) and `area_rest` (the default for the editable box after it). The Area Path written on every test case is `area_root\\<box>`; it can also be set per run with `--area`. A box left blank means the root only.
 `local_config.json` is git-ignored. Optionally put a Microsoft sensitivity label file at `scripts/LabelInfo.xml` (also git-ignored)
 to stamp it on the generated workbooks; otherwise the label is copied from the first labelled workbook in `imports/` or from the source.
 

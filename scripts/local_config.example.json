@@ -1,4 +1,5 @@
 {
-  "area_path": "Project\\Area\\Path",
+  "area_root": "Project",
+  "area_rest": "Area\\Path",
   "state": "Design"
 }
