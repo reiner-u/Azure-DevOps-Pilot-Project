@@ -100,7 +100,7 @@ HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Ex
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
 LANGS = [("EN", "EN Import"), ("FR", "FR Import")]
 LABEL = "docMetadata/LabelInfo.xml"
-TOOL_VERSION = "2026.11.05"
+TOOL_VERSION = "2026.11.05.1"
 
 M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -158,7 +158,9 @@ def shorten_title(t, limit=128):
     return cut.rstrip(" ,;:-") + "..."
 
 
-NUM = re.compile(r"(?:^|\s)(\d+)[.)]\s+")
+# A step number is digits plus "." or ")", followed by a space, or directly by a letter, quote or bracket ("1.User clicks...").
+# "1.5" and "1.1 Check" are not step numbers; the list must still run 1, 2, 3... from the start of the cell to count as numbered.
+NUM = re.compile(r"(?:^|\s)(\d+)[.)](?:\s+|(?=[A-Za-z\"\u201c\u2018'(<\[]))")
 LEAD_NUM = re.compile(r"^\s*\d+[.)]\s*")
 
 
