@@ -2,10 +2,10 @@
 """Window for the test-document converter (same engine as convert_all.bat, see build_import_from_source.py).
 
 Start it with convert_gui.bat. It needs only Python 3 with tkinter (included with the standard Windows installer) and openpyxl.
-  * pick the source and imports folders (remembered between runs)
+  * pick the To Convert and Converted to ADO folders (remembered between runs)
   * tick the documents to convert, then Dry run / Convert selected / New version of selected
   * the results table shows case counts and a review flag; click a row to read its notes and which columns were used
-Nothing is changed in source/. Existing import versions are never overwritten.
+Nothing is changed in the To Convert folder. Existing import versions are never overwritten.
 """
 import json, os, queue, subprocess, sys, threading, traceback
 import tkinter as tk
@@ -16,7 +16,8 @@ HERE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.ab
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_import_from_source as core          # the converter
 
-ROOT = HERE if FROZEN else os.path.dirname(HERE)  # exe: source/imports/reports sit next to the exe
+ROOT = HERE if FROZEN else os.path.dirname(HERE)  # exe: the To Convert, Converted to ADO and reports folders sit next to the exe
+DEFAULT_FOLDERS = dict(source=core.SOURCE_DIRNAME, imports=core.IMPORTS_DIRNAME, reports=core.REPORTS_DIRNAME)
 SETTINGS = os.path.join(HERE, "gui_settings.json")
 CHECK, UNCHECK = "[x]", "[ ]"
 
@@ -41,7 +42,7 @@ class App(tk.Tk):
         cfg = self.load_settings()
         def pick(key):      # a remembered folder, unless it no longer exists (e.g. the tool was copied to another computer)
             saved = cfg.get(key)
-            return saved if saved and os.path.isdir(saved) else os.path.join(ROOT, key)
+            return saved if saved and os.path.isdir(saved) else os.path.join(ROOT, DEFAULT_FOLDERS[key])
         self.source, self.imports, self.reports = (tk.StringVar(value=pick(k)) for k in ("source", "imports", "reports"))
         for v in (self.source, self.imports, self.reports):     # first run next to a fresh exe: make the default folders
             if v.get().startswith(ROOT):
@@ -86,7 +87,7 @@ class App(tk.Tk):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=8, pady=(8, 2))
         top.columnconfigure(1, weight=1)
-        for r, (label, var) in enumerate((("Source folder", self.source), ("Imports folder", self.imports), ("Reports folder", self.reports))):
+        for r, (label, var) in enumerate((("To Convert folder", self.source), ("Converted to ADO folder", self.imports), ("Reports folder", self.reports))):
             ttk.Label(top, text=label).grid(row=r, column=0, sticky="w", **pad)
             ttk.Entry(top, textvariable=var).grid(row=r, column=1, sticky="ew", **pad)
             ttk.Button(top, text="Browse...", command=lambda v=var: self.browse(v)).grid(row=r, column=2, **pad)
@@ -98,7 +99,7 @@ class App(tk.Tk):
         ttk.Entry(area_box, textvariable=self.area).grid(row=0, column=1, sticky="ew")
         ttk.Label(top, text="the part after the fixed root; blank = the root only.\nMust already exist in ADO.").grid(row=3, column=2, sticky="w", **pad)
 
-        files = ttk.LabelFrame(self, text="1. Documents in the source folder (click [ ] to tick or untick)")
+        files = ttk.LabelFrame(self, text="1. Documents in the To Convert folder (click [ ] to tick or untick)")
         files.pack(fill="both", expand=True, padx=8, pady=4)
         bar = ttk.Frame(files)
         bar.pack(fill="x", padx=4, pady=2)
@@ -141,7 +142,7 @@ class App(tk.Tk):
 
         foot = ttk.Frame(self)
         foot.pack(fill="x", padx=8, pady=(2, 8))
-        for text, cmd in (("Open imports folder", lambda: open_path(self.imports.get())),
+        for text, cmd in (("Open Converted to ADO folder", lambda: open_path(self.imports.get())),
                           ("Open attachments folder (pictures)", lambda: open_path(os.path.join(self.imports.get(), "attachments"))),
                           ("Open latest report", self.open_report),
                           ("Open selected import file", self.open_selected_import)):
@@ -181,13 +182,13 @@ class App(tk.Tk):
         self.file_tree.delete(*self.file_tree.get_children())
         src = self.source.get()
         if not os.path.isdir(src):
-            self.status.config(text="The source folder does not exist.")
+            self.status.config(text="The To Convert folder does not exist.")
             return
         for fn in core.source_files(src):
             st = self.file_status(fn)
             sel = old.get(fn, CHECK if st == "Not converted yet" else UNCHECK)
             self.file_tree.insert("", "end", iid=fn, values=(sel, fn, st))
-        self.status.config(text=f"{len(self.file_tree.get_children())} file(s) in the source folder.")
+        self.status.config(text=f"{len(self.file_tree.get_children())} file(s) in the To Convert folder.")
 
     def on_file_click(self, event):
         if self.file_tree.identify_region(event.x, event.y) == "cell" and self.file_tree.identify_column(event.x) == "#1":

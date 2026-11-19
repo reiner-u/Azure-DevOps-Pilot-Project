@@ -11,17 +11,17 @@ Needs Python 3 and `openpyxl` (`pip install openpyxl`). The window also needs `t
 | What | How |
 |---|---|
 | Window | `convert_gui.bat` (or `python scripts/converter_gui.py`) |
-| Command line, everything in `source/` | `convert_all.bat` (or `python scripts/build_import_from_source.py --all`) |
+| Command line, everything in `To Convert/` | `convert_all.bat` (or `python scripts/build_import_from_source.py --all`) |
 | One file | `python scripts/build_import_from_source.py <source.xlsx> <output.xlsx> "<feature title>"` |
-| Standalone exe | `build_exe.bat` (needs internet once; builds `share/ADO_Test_Converter.exe`) |
+| Standalone exe | `build_exe.bat` (needs internet once; builds `ADO_Test_Converter.exe` in the project folder and a zip in `releases/`) |
 
-Folders next to the scripts: `source/` (your documents), `imports/` (results), `reports/` (one CSV per run). All three are git-ignored.
+Folders next to the scripts (and next to the exe): `To Convert/` (your documents), `Converted to ADO/` (results), `reports/` (one CSV per run). All three are git-ignored.
 
 ## Configuration
 
 Copy `scripts/local_config.example.json` to `scripts/local_config.json` and set `area_root` (the fixed first part of the ADO Area Path, shown as a locked label in the window) and `area_rest` (the default for the editable box after it). The Area Path written on every test case is `area_root\\<box>`; it can also be set per run with `--area`. A box left blank means the root only.
 `local_config.json` is git-ignored. Optionally put a Microsoft sensitivity label file at `scripts/LabelInfo.xml` (also git-ignored)
-to stamp it on the generated workbooks; otherwise the label is copied from the first labelled workbook in `imports/` or from the source.
+to stamp it on the generated workbooks; otherwise the label is copied from the first labelled workbook in `Converted to ADO/` or from the source.
 
 ## How documents are read
 
@@ -31,5 +31,5 @@ pre-condition, execution, expected result, plus optional type, author, requireme
 
 ## Do not commit
 
-Source documents, generated import workbooks, reports, attachments, the briefing, `local_config.json`, `LabelInfo.xml`, `gui_settings.json`, `_build/`, `share/`.
+Source documents, generated import workbooks, reports, attachments, the briefing, `local_config.json`, `LabelInfo.xml`, `gui_settings.json`, `_build/`, `releases/`, the exe, `_archive/`.
 The `.gitignore` is a whitelist (`*` ignores everything; only the files listed in it are tracked).

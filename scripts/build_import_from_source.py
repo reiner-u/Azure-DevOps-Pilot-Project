@@ -2,13 +2,13 @@
 """Convert ALM/HPQC-style Excel test documents into Azure DevOps test-case import workbooks.
 
 BATCH (normal use):   python scripts\\build_import_from_source.py --all
-    Converts every .xlsx in source/ that has no import workbook yet, writes imports/<name>_AzureDevOps_Import_V1.xlsx,
+    Converts every .xlsx in the "To Convert" folder that has no import workbook yet, writes "Converted to ADO"/<name>_AzureDevOps_Import_V1.xlsx,
     and writes a review report to reports/conversion_report_<timestamp>.csv. Files already converted are skipped
     (add --force to build the next version, V2, V3...; existing versions are never overwritten).
     Add --dry-run to analyse everything and write nothing.
 SINGLE FILE:          python scripts\\build_import_from_source.py <source.xlsx> <output.xlsx> "<Feature title>"
 OPTIONS:              --label-from <xlsx>   copy the Microsoft sensitivity label from this workbook
-                      (default: the first workbook in imports/ that has one, else the source's own label)
+                      (default: the first workbook in "Converted to ADO" that has one, else the source's own label)
                       --source-dir / --imports-dir / --reports-dir   override the default folders
 
 HOW A WORKBOOK IS READ (adapts to the file; nothing is hardcoded to one document):
@@ -100,7 +100,8 @@ HEADERS = ["ID", "Work Item Type", "Title", "Test Step", "Step Action", "Step Ex
 WIDTHS = [12, 18, 42, 12, 85, 75, 48, 28, 14, 55]
 LANGS = [("EN", "EN Import"), ("FR", "FR Import")]
 LABEL = "docMetadata/LabelInfo.xml"
-TOOL_VERSION = "2026.11.05.1"
+TOOL_VERSION = "2026.11.19"
+SOURCE_DIRNAME, IMPORTS_DIRNAME, REPORTS_DIRNAME = "To Convert", "Converted to ADO", "reports"   # default folders, next to the scripts or the exe
 
 M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -697,7 +698,7 @@ def has_label(path):
 
 def label_bytes(label_from, src):
     """The Microsoft sensitivity label to put on a new workbook, in order of preference: the workbook named by --label-from
-    (or the first labelled workbook in imports/), the source's own label, else the copy bundled next to this script / inside the exe."""
+    (or the first labelled workbook in the Converted to ADO folder), the source's own label, else the copy bundled next to this script / inside the exe."""
     for path in (label_from, src):
         if path and has_label(path):
             with zipfile.ZipFile(path) as z:
@@ -880,7 +881,7 @@ def slugify(stem):
 
 
 def source_files(source_dir):
-    """Everything in source/ except Excel lock files (~$...) and hidden files."""
+    """Everything in the To Convert folder except Excel lock files (~$...) and hidden files."""
     return [fn for fn in sorted(os.listdir(source_dir))
             if os.path.isfile(os.path.join(source_dir, fn)) and not fn.startswith(("~$", "."))]
 
@@ -893,7 +894,7 @@ def existing_versions(imports_dir, fn):
 
 
 def default_label(imports_dir):
-    """The first workbook in imports/ that carries the Microsoft sensitivity label (new workbooks copy it)."""
+    """The first workbook in the Converted to ADO folder that carries the Microsoft sensitivity label (new workbooks copy it)."""
     if os.path.isdir(imports_dir):
         return next((f for f in sorted(glob.glob(os.path.join(imports_dir, "*.xlsx")))
                      if not os.path.basename(f).startswith("~$") and has_label(f)), None)
@@ -901,7 +902,7 @@ def default_label(imports_dir):
 
 
 def convert_file(fn, source_dir, imports_dir, force=False, dry_run=False, label_from=None):
-    """Convert one file from source/. Never raises: always returns a report row (see write_report for the columns)."""
+    """Convert one file from the To Convert folder. Never raises: always returns a report row (see write_report for the columns)."""
     path = os.path.join(source_dir, fn)
     row = dict(source=fn, import_file="", area_path=AREA, status="", cases="", steps_per_case="", review="", sheets_used="", column_map="", notes="")
     if not fn.lower().endswith(".xlsx"):
@@ -917,7 +918,7 @@ def convert_file(fn, source_dir, imports_dir, force=False, dry_run=False, label_
     try:
         info = convert(path, os.path.join(imports_dir, out_name), feature, label_from, dry_run)
     except NotATestDocument as e:
-        row["status"] = f"skipped: {e}. This is not a test document, or its headers are not recognised (move it out of source/ if it never will be)"
+        row["status"] = f"skipped: {e}. This is not a test document, or its headers are not recognised (move it out of the {SOURCE_DIRNAME} folder if it never will be)"
         row["review"] = "yes"
         return row
     except PermissionError:
@@ -941,7 +942,7 @@ def convert_file(fn, source_dir, imports_dir, force=False, dry_run=False, label_
 
 
 def run_all(source_dir, imports_dir, force, dry_run, label_from, only=None, progress=None):
-    """Convert every file in source/ (or just the names in `only`). progress(i, n, row) is called after each file."""
+    """Convert every file in the To Convert folder (or just the names in `only`). progress(i, n, row) is called after each file."""
     rows = []
     label_from = label_from or default_label(imports_dir)
     names = [fn for fn in source_files(source_dir) if only is None or fn in only]
@@ -987,8 +988,8 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     if a.all:
-        sdir = a.source_dir or os.path.join(root, "source")
-        idir = a.imports_dir or os.path.join(root, "imports")
+        sdir = a.source_dir or os.path.join(root, SOURCE_DIRNAME)
+        idir = a.imports_dir or os.path.join(root, IMPORTS_DIRNAME)
         rows = run_all(sdir, idir, a.force, a.dry_run, a.label_from)
         for r in rows:
             print(f"{r['source']}\n    -> {r['status']}" + (f" | {r['cases']}; steps per case {r['steps_per_case']}" if r["cases"] else ""))
@@ -999,7 +1000,7 @@ def main():
         print(f"\n{len(rows)} file(s) found: {built} built, {sum(1 for r in rows if r['status'].startswith('skipped'))} skipped, "
               f"{sum(1 for r in rows if r['status'].startswith('FAILED'))} failed, {sum(1 for r in rows if r['review'] == 'yes')} need review.")
         if rows and not a.dry_run:
-            print("Review report:", write_report(rows, a.reports_dir or os.path.join(root, "reports")))
+            print("Review report:", write_report(rows, a.reports_dir or os.path.join(root, REPORTS_DIRNAME)))
         return
     if not (a.source and a.output and a.feature):
         ap.error("give <source.xlsx> <output.xlsx> \"<Feature title>\", or use --all")
