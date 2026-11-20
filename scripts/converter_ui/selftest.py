@@ -1,7 +1,9 @@
 """A check that runs the real window hidden: build it, dry-run every document, print the result, quit. Writes no workbooks.
 
 Used after building the exe. A windowed exe has no console, so --selftest-out <file> writes the output to a file instead:
-    ADO_Test_Converter.exe --selftest-out result.txt [--force] <To Convert folder> <Converted to ADO folder>
+    ADO_Test_Converter.exe --selftest-out result.txt <To Convert folder> <Converted to ADO folder>
+It is a dry run, so it writes no workbooks, and like the window's own buttons it treats every document as a new version:
+a document that already has an import workbook is checked, not skipped.
 """
 import contextlib
 import io
