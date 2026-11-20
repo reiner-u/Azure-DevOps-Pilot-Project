@@ -59,6 +59,9 @@ class HiddenWindow(unittest.TestCase):
             app.refresh()
             self.assertEqual([b.cget("text") for b in app.buttons],
                              ["Check Conversion Compatibility", "Convert selected"])
+            self.assertEqual([app.tabs.tab(t, "text") for t in app.tabs.tabs()],
+                             ["Test Case Converter", "ALM Defect Converter"])
+            self.assertEqual(app.defects.placeholder.cget("text"), "Work in Progress")
             self.assertEqual(app.files.names(), ["Login tests.xlsx"])
             self.assertEqual(app.files.selected(), ["Login tests.xlsx"])         # not converted yet, so ticked
             app.start(True)

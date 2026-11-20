@@ -9,6 +9,7 @@ Pieces, from the bottom up:
     folder_bar      the folder and Area Path rows at the top
     file_list       the tick list of documents to convert
     results         the results table and the Details box
-    app             the main window that puts them together
+    defects_tab     the ALM Defect Converter tab (a "Work in Progress" placeholder for now)
+    app             the main window: a Test Case Converter tab built from the panels above, plus the defects tab
     selftest        a hidden-window check used after building the exe
 """

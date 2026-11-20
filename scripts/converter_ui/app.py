@@ -9,6 +9,7 @@ from . import settings_store, summaries
 from .file_list import FileList
 from .folder_bar import FolderBar
 from .paths import open_path
+from .defects_tab import TAB_TITLE as DEFECTS_TAB_TITLE, DefectsTab
 from .results import DetailsBox, ResultsTable
 from .runner import ConversionRunner
 
@@ -30,19 +31,29 @@ class App(tk.Tk):
 
     # ----- layout -----
     def _build(self):
-        self.folders = FolderBar(self, settings_store.load(), on_folder_chosen=self._on_folder_chosen)
-        self.folders.pack(fill="x", padx=8, pady=(8, 2))
-        self.files = FileList(self, self.folders.source.get, self.folders.imports.get, self.set_status)
-        self.files.pack(fill="both", expand=True, padx=8, pady=4)
-        self._build_action_bar()
-        self.results = ResultsTable(self, on_select=self.show_selected_result)
-        self.results.pack(fill="both", expand=True, padx=8, pady=4)
-        self.details = DetailsBox(self)
-        self.details.pack(fill="both", expand=True, padx=8, pady=4)
-        self._build_footer()
+        """Two tabs: the test case converter, and the ALM defect converter (a placeholder until it is built)."""
+        self.tabs = ttk.Notebook(self)
+        self.tabs.pack(fill="both", expand=True, padx=4, pady=4)
+        page = ttk.Frame(self.tabs)
+        self.tabs.add(page, text="Test Case Converter")
+        self._build_test_case_page(page)
+        self.defects = DefectsTab(self.tabs)
+        self.tabs.add(self.defects, text=DEFECTS_TAB_TITLE)
 
-    def _build_action_bar(self):
-        bar = ttk.Frame(self)
+    def _build_test_case_page(self, page):
+        self.folders = FolderBar(page, settings_store.load(), on_folder_chosen=self._on_folder_chosen)
+        self.folders.pack(fill="x", padx=8, pady=(8, 2))
+        self.files = FileList(page, self.folders.source.get, self.folders.imports.get, self.set_status)
+        self.files.pack(fill="both", expand=True, padx=8, pady=4)
+        self._build_action_bar(page)
+        self.results = ResultsTable(page, on_select=self.show_selected_result)
+        self.results.pack(fill="both", expand=True, padx=8, pady=4)
+        self.details = DetailsBox(page)
+        self.details.pack(fill="both", expand=True, padx=8, pady=4)
+        self._build_footer(page)
+
+    def _build_action_bar(self, page):
+        bar = ttk.Frame(page)
         bar.pack(fill="x", padx=8, pady=2)
         self.buttons = []
         # Both buttons force a new version: a conversion always writes V2, V3... rather than skipping a converted
@@ -56,8 +67,8 @@ class App(tk.Tk):
         self.status = ttk.Label(bar, text="Ready.")
         self.status.pack(side="left", padx=4)
 
-    def _build_footer(self):
-        footer = ttk.Frame(self)
+    def _build_footer(self, page):
+        footer = ttk.Frame(page)
         footer.pack(fill="x", padx=8, pady=(2, 8))
         for text, command in (("Open Converted to ADO folder", lambda: open_path(self.folders.imports.get())),
                               ("Open attachments folder (pictures)",

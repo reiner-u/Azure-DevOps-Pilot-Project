@@ -3,6 +3,10 @@
 Newest first. The version is `TOOL_VERSION` in `scripts/converter/settings.py` and shows in the window's title bar.
 Release zips are shared through a work channel, not GitHub.
 
+## 2026.11.20.2
+- The window now has two tabs. "Test Case Converter" is everything that was there before, unchanged. "ALM Defect Converter" is a placeholder that says "Work in Progress": the converter for turning ALM defect exports into Azure DevOps Bug work items will live there once it is built.
+- No change to how test documents are converted.
+
 ## 2026.11.20.1
 - Documents with an "Automated (Yes or No)" column now give a Manual and an Automated import sheet instead of one mixed sheet, the same way English and French expected results give an EN and an FR sheet. A document with both gives four sheets (EN Manual, EN Automated, FR Manual, FR Automated). A sheet where every case is on the same side is not split.
 - The column is filled in by hand, so only a value whose first word means yes counts as automated ("Yes, partially" does); a value whose first word means no counts as manual; blanks and strays ("N/A", "TBD", "duplicate", "45/53") count as unmarked. Unmarked cases go on the Manual sheet and every one of them is named in a review note. A document where every case says No gets no note, because nothing had to be decided.

@@ -40,7 +40,7 @@ The code is split into small modules. `scripts/build_import_from_source.py` and 
 | Folder | What is in it |
 |---|---|
 | `scripts/converter/` | The engine, one job per file: `headers` (which column is which), `steps` (splitting a cell into steps), `cases` (one row -> one `Case`), `planning` (which sheets, which import sheets), `checks` (review notes), `writer` (the import workbook), `label`, `images`, `convert` (one document), `batch` (many documents and the report), `cli`. `converter/__init__.py` has the map in order of flow. Nothing in it uses tkinter. |
-| `scripts/converter_ui/` | The window: folder bar, file list, results table, details box, the runner thread, a hidden self-test. |
+| `scripts/converter_ui/` | The window: a Test Case Converter tab (folder bar, file list, results table, details box, the runner thread) and an ALM Defect Converter tab (`defects_tab.py`, a placeholder for now), plus a hidden self-test. |
 | `tests/` | The tests and `regression_check.py`. Only made-up documents; no real content. |
 
 ## Changing the converter
