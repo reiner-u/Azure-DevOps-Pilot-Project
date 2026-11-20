@@ -57,9 +57,11 @@ class HiddenWindow(unittest.TestCase):
             app.folders.imports.set(imports)
             app.folders.reports.set(reports)
             app.refresh()
+            self.assertEqual([b.cget("text") for b in app.buttons],
+                             ["Check Conversion Compatibility", "Convert selected"])
             self.assertEqual(app.files.names(), ["Login tests.xlsx"])
             self.assertEqual(app.files.selected(), ["Login tests.xlsx"])         # not converted yet, so ticked
-            app.start(True, False)
+            app.start(True)
             started = time.time()
             while app.busy and time.time() - started < 60:
                 app.update()

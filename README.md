@@ -27,7 +27,9 @@ to stamp it on the generated workbooks; otherwise the label is copied from the f
 ## How documents are read
 
 Test sheets are found by their header row (first 25 rows), not their names; columns are matched by meaning (ID, description,
-pre-condition, execution, expected result, plus optional type, author, requirement, automated, notes). The full rules are in the
+pre-condition, execution, expected result, plus optional type, author, requirement, automated, notes). A document with English and
+French expected results gives an EN and an FR sheet; a document that marks some cases automated and some not gives a Manual and an
+Automated sheet (both at once gives four). The full rules are in the
 docstring at the top of `scripts/converter/cli.py` (also what `--help` prints), and the notes column of each report lists anything
 unusual in a document. The tool never guesses silently: whatever it could not decide becomes a review note.
 

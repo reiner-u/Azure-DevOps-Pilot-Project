@@ -10,7 +10,7 @@ import sys
 
 # Shown in the window's title bar. Bump it for every release (see CHANGELOG.md). build_exe.bat reads this exact line, so keep
 # it as TOOL_VERSION = "..." on a line of its own, with no comment after it.
-TOOL_VERSION = "2026.11.20"
+TOOL_VERSION = "2026.11.20.1"
 
 # Folders used by default, next to the scripts' project folder or next to the exe.
 SOURCE_DIRNAME = "To Convert"

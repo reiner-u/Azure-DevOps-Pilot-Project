@@ -5,9 +5,10 @@ The steps, in order (each lives in its own module):
   2. decide which sheets to read and which import sheets to build (planning)
   3. read every case                                             (cases)
   4. collect review notes                                        (checks)
-  5. save the pictures next to the import workbook               (AttachmentStore, below)
-  6. write the workbook and put the sensitivity label on it      (writer, label)
-A dry run stops after step 4 and writes nothing.
+  5. split manual from automated cases where the source marks them (automation)
+  6. save the pictures next to the import workbook               (AttachmentStore, below)
+  7. write the workbook and put the sensitivity label on it      (writer, label)
+A dry run stops after step 5 and writes nothing.
 """
 import os
 import re
@@ -18,6 +19,7 @@ import openpyxl
 
 from . import area as area_path
 from . import settings
+from .automation import column_header, split_by_automation
 from .cases import read_cases
 from .checks import read_declared_counts, review_notes
 from .images import extract_images
@@ -88,6 +90,8 @@ def convert(src, out, feature, label_from=None, dry_run=False, area=None):
     reference_pictures = [(sheet, data, ext) for sheet, found in pictures.items() if sheet not in used_sheets
                           for (_, _, data, ext) in found]
     notes += review_notes(plan.variants, read_declared_counts(src), plan.legacy, sum(unanchored.values()))
+    # the checks above describe each source sheet as a whole, so the manual/automated split comes after them
+    variants = split_by_automation(plan.variants, notes)
     if area == area_path.PLACEHOLDER:
         notes.append("Area Path is still the placeholder 'Project\\Area\\Path': copy scripts/local_config.example.json to "
                      "local_config.json and set area_root and area_rest, then convert again")
@@ -95,21 +99,21 @@ def convert(src, out, feature, label_from=None, dry_run=False, area=None):
         names = sorted({sheet for sheet, _, _ in reference_pictures})
         notes.append(f"{len(reference_pictures)} picture(s) on non-test sheet(s) {names} saved to attachments/ as reference "
                      f"screenshots; attach where they belong")
-    info = ConversionInfo(variants=plan.variants, notes=notes, out=out, legacy=plan.legacy, sheets=sorted(used_sheets),
-                          column_map=column_map(plan.variants))
+    info = ConversionInfo(variants=variants, notes=notes, out=out, legacy=plan.legacy, sheets=sorted(used_sheets),
+                          column_map=column_map(variants))
     if dry_run:
         return info
 
     store = AttachmentStore(out)
-    for variant in plan.variants:
+    for variant in variants:
         store.save_case_pictures(variant)
     store.save_reference_pictures(reference_pictures)
 
-    has_pictures = (any(c.images or c.other_images for v in plan.variants for c in v.cases) or bool(reference_pictures))
+    has_pictures = (any(c.images or c.other_images for v in variants for c in v.cases) or bool(reference_pictures))
     workbook = openpyxl.Workbook()
-    write_read_me(workbook, feature, os.path.basename(src), plan.variants, plan.legacy, plan.bilingual, has_pictures,
-                  area, settings.STATE)
-    for variant in plan.variants:
+    write_read_me(workbook, feature, os.path.basename(src), variants, plan.legacy, plan.bilingual, has_pictures,
+                  area, settings.STATE, column_header(variants))
+    for variant in variants:
         write_sheet(workbook, variant.name, variant.cases, area, settings.STATE)
     label_data = label_bytes(label_from, src)
     save_workbook(workbook, out, label_data)

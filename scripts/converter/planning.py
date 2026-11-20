@@ -4,7 +4,9 @@ Three kinds of workbook are handled:
   * an older layout with sheets literally named "EN" and "FR": one import sheet each ("EN Import", "FR Import");
   * a test sheet with an English and a French expected-result column: an EN and an FR import sheet with the same steps;
   * everything else: one import sheet per test sheet.
-Sheets are recognised by their headers, never by their names (see headers.py).
+Sheets are recognised by their headers, never by their names (see headers.py). A sheet that marks some of its cases
+automated and some not is split once more, into a Manual and an Automated sheet, after the cases have been read
+(automation.py).
 """
 import re
 from dataclasses import dataclass, field
@@ -84,7 +86,7 @@ def _plan_language_sheets(language_sheets, found, notes):
     return variants
 
 
-class _SheetNamer:
+class SheetNamer:
     """Gives every import sheet a valid, unique name (Excel: at most 31 characters, none of []:*?/\\, no duplicates)."""
 
     def __init__(self):
@@ -102,7 +104,7 @@ class _SheetNamer:
 
 def _plan_sheets(found, notes):
     """One import sheet per test sheet, or an EN and an FR sheet for a sheet with two expected-result columns."""
-    variants, bilingual, namer = [], False, _SheetNamer()
+    variants, bilingual, namer = [], False, SheetNamer()
     several = len(found) > 1
     for ws, header in found:
         title = ws.title.strip()

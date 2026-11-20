@@ -24,7 +24,7 @@ def selftest(argv):
         app.folders.imports.set(argv[1])
         app.refresh()
     app.files.tick("all")
-    app.start(True, "--force" in sys.argv)
+    app.start(True)
     started = time.time()
     while app.busy and time.time() - started < 600:
         app.update()

@@ -3,6 +3,12 @@
 Newest first. The version is `TOOL_VERSION` in `scripts/converter/settings.py` and shows in the window's title bar.
 Release zips are shared through a work channel, not GitHub.
 
+## 2026.11.20.1
+- Documents with an "Automated (Yes or No)" column now give a Manual and an Automated import sheet instead of one mixed sheet, the same way English and French expected results give an EN and an FR sheet. A document with both gives four sheets (EN Manual, EN Automated, FR Manual, FR Automated). A sheet where every case is on the same side is not split.
+- The column is filled in by hand, so only a value whose first word means yes counts as automated ("Yes, partially" does); a value whose first word means no counts as manual; blanks and strays ("N/A", "TBD", "duplicate", "45/53") count as unmarked. Unmarked cases go on the Manual sheet and every one of them is named in a review note. A document where every case says No gets no note, because nothing had to be decided.
+- The window has two buttons instead of three: "Check Conversion Compatibility" (the old dry run) and "Convert selected", which now always writes the next version (V2, V3...) without asking first. Earlier versions are still never overwritten.
+- Checked against every document to hand: the 22 older documents, the current working copies and the new Contact document give exactly the same test cases as 2026.11.20, cell for cell, only spread over the new sheets. The Read Me sheet gains a "Manual / automated" line and now lists the real sheet names.
+
 ## 2026.11.20
 - Restructured for readability and modularity. No change to what the converter produces: all 22 older documents, the 7 current working copies and several deliberately broken files give identical import workbooks (every cell, row height, picture and sensitivity label), identical review notes and identical reports before and after.
 - The single 1,000-line converter script is now a package, `scripts/converter/`, with one job per file (headers, steps, cases, planning, checks, writer, label, images, convert, batch, cli). The window is `scripts/converter_ui/`. `build_import_from_source.py` and `converter_gui.py` stay as the entry points, so the batch files and commands are unchanged.

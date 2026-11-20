@@ -10,6 +10,7 @@ import _paths  # noqa: F401
 import fixtures
 from converter import settings
 from converter.convert import convert
+from converter.automation import AUTOMATED, MANUAL, UNMARKED, group_of
 from converter.planning import NotATestDocument
 
 AREA = "Demo Project\\Demo Area"
@@ -291,6 +292,120 @@ class SensitivityLabel(ConvertCase):
         fixtures.add_label(source)
         self.build(source)
         self.assertEqual(openpyxl.load_workbook(self.path("out.xlsx")).sheetnames, ["Read Me", "Import"])
+
+
+class ManualAndAutomated(ConvertCase):
+    """The optional "Automated (Yes or No)" column splits a sheet into a Manual and an Automated import sheet."""
+
+    def test_which_values_count_as_automated(self):
+        for value in ("Yes", "yes", " YES ", "Y", "yes, partially", "Yes partially", "automated", "true"):
+            self.assertEqual(group_of(value), AUTOMATED, value)
+        for value in ("No", "no", "N", "manual", "Not yet", "false"):
+            self.assertEqual(group_of(value), MANUAL, value)
+        for value in (None, "", "   ", "N/A", "n/a", "TBD", "?", "-", "duplicate", "45/53", "Not applicable"):
+            self.assertEqual(group_of(value), UNMARKED, repr(value))
+
+    def test_a_mixed_sheet_gives_a_manual_and_an_automated_sheet(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto="No"),
+                                          fixtures.case(2, auto="Yes"), fixtures.case(3, auto="Yes"))
+        info, wb = self.build(source)
+        self.assertEqual(wb.sheetnames, ["Read Me", "Manual Import", "Automated Import"])
+        self.assertEqual(len(self.title_rows(wb["Manual Import"])), 1)
+        self.assertEqual(len(self.title_rows(wb["Automated Import"])), 2)
+        self.assertIn("Automated: No", self.title_rows(wb["Manual Import"])[0][9])
+        self.assertIn("Automated: Yes", self.title_rows(wb["Automated Import"])[0][9])
+        self.assertTrue(any("split by the 'Automated' column" in n for n in info.notes), info.notes)
+
+    def test_cases_keep_their_source_order_within_each_sheet(self):
+        cases = [fixtures.case(n, auto="Yes" if n % 2 else "No") for n in range(1, 7)]
+        _info, wb = self.build(fixtures.simple_document(self.path("src.xlsx"), *cases))
+        self.assertEqual([row[2] for row in self.title_rows(wb["Manual Import"])],
+                         ["Sign in, variant 2", "Sign in, variant 4", "Sign in, variant 6"])
+        self.assertEqual([row[2] for row in self.title_rows(wb["Automated Import"])],
+                         ["Sign in, variant 1", "Sign in, variant 3", "Sign in, variant 5"])
+
+    def test_a_partially_automated_case_counts_as_automated(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto="No"),
+                                          fixtures.case(2, auto="Yes, partially"))
+        _info, wb = self.build(source)
+        self.assertEqual([row[2] for row in self.title_rows(wb["Automated Import"])], ["Sign in, variant 2"])
+        self.assertIn("Automated: Yes, partially", self.title_rows(wb["Automated Import"])[0][9])
+
+    def test_a_blank_or_unclear_value_goes_to_the_manual_sheet_and_is_named(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto="Yes"),
+                                          fixtures.case(2, auto=None), fixtures.case(3, auto="duplicate"))
+        info, wb = self.build(source)
+        self.assertEqual(len(self.title_rows(wb["Manual Import"])), 2)
+        note = next(n for n in info.notes if "split by" in n)
+        self.assertIn("blank or unclear value", note)
+        self.assertIn("['002', '003']", note)
+
+    def test_an_all_manual_document_is_not_split_and_gets_no_note(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1), fixtures.case(2))
+        info, wb = self.build(source)
+        self.assertEqual(wb.sheetnames, ["Read Me", "Import"])
+        self.assertEqual(info.notes, [])
+
+    def test_an_all_automated_document_is_not_split_but_says_so(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto="Yes"))
+        info, wb = self.build(source)
+        self.assertEqual(wb.sheetnames, ["Read Me", "Import"])
+        self.assertTrue(any("every case is marked automated" in n for n in info.notes), info.notes)
+
+    def test_an_all_blank_column_is_not_split_but_says_so(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto=None), fixtures.case(2, auto=None))
+        info, wb = self.build(source)
+        self.assertEqual(wb.sheetnames, ["Read Me", "Import"])
+        self.assertTrue(any("blank or unclear for all 2 case(s)" in n for n in info.notes), info.notes)
+
+    def test_a_document_without_the_column_is_untouched(self):
+        headers = fixtures.HEADERS[:-1]
+        rows = [headers, fixtures.case(1)[:-1], fixtures.case(2)[:-1]]
+        info, wb = self.build(fixtures.write_workbook(self.path("src.xlsx"), {"Test Cases": rows}))
+        self.assertEqual(wb.sheetnames, ["Read Me", "Import"])
+        self.assertFalse([n for n in info.notes if "automated" in n and "no Automated column" not in n], info.notes)
+
+    def test_en_and_fr_sheets_are_each_split(self):
+        sheets = {"EN": [fixtures.HEADERS, fixtures.case(1, auto="No"), fixtures.case(2, auto="Yes")],
+                  "FR": [fixtures.HEADERS, fixtures.case(1, auto="No", exp="La page"),
+                         fixtures.case(2, auto="Yes", exp="La page")]}
+        _info, wb = self.build(fixtures.write_workbook(self.path("src.xlsx"), sheets))
+        self.assertEqual(wb.sheetnames, ["Read Me", "EN Manual", "EN Automated", "FR Manual", "FR Automated"])
+        self.assertEqual(len(self.title_rows(wb["FR Automated"])), 1)
+
+    def test_a_bilingual_sheet_is_split_in_both_languages(self):
+        headers = list(fixtures.HEADERS)
+        headers[5] = "Expected Result (EN)"
+        headers.append("Expected Result (FR)")
+        rows = [headers, fixtures.case(1, auto="No") + ["La page"], fixtures.case(2, auto="Yes") + ["La page"]]
+        _info, wb = self.build(fixtures.write_workbook(self.path("src.xlsx"), {"Cases": rows}))
+        self.assertEqual(wb.sheetnames, ["Read Me", "EN Manual", "EN Automated", "FR Manual", "FR Automated"])
+        self.assertEqual(self.step_rows(wb["FR Automated"])[-1][5], "La page")
+
+    def test_two_test_sheets_are_named_after_their_sheet(self):
+        sheets = {"Page fields": [fixtures.HEADERS, fixtures.case(1, auto="No"), fixtures.case(2, auto="Yes")],
+                  "Navigation": [fixtures.HEADERS, fixtures.case(3, auto="No"), fixtures.case(4, auto="Yes")]}
+        _info, wb = self.build(fixtures.write_workbook(self.path("src.xlsx"), sheets))
+        self.assertEqual(wb.sheetnames, ["Read Me", "Page fields Manual", "Page fields Automated",
+                                         "Navigation Manual", "Navigation Automated"])
+
+    def test_the_read_me_explains_the_split_and_names_the_column(self):
+        headers = list(fixtures.HEADERS)
+        headers[-1] = "Automatable (Yes or No)"
+        rows = [headers, fixtures.case(1, auto="No"), fixtures.case(2, auto="Yes")]
+        _info, wb = self.build(fixtures.write_workbook(self.path("src.xlsx"), {"Test Cases": rows}))
+        read_me = {row[0]: row[1] for row in wb["Read Me"].iter_rows(values_only=True)}
+        self.assertIn("Automatable (Yes or No)", read_me["Manual / automated"])
+        self.assertIn("1 test cases (Manual Import) / 1 test cases (Automated Import)", read_me["Import sheets"])
+
+    def test_a_picture_on_an_automated_case_still_lands_in_attachments(self):
+        source = fixtures.simple_document(self.path("src.xlsx"), fixtures.case(1, auto="No"),
+                                          fixtures.case(2, auto="Yes", exp=None))
+        fixtures.add_picture(source, 2, 5)
+        _info, wb = self.build(source)
+        description = self.title_rows(wb["Automated Import"])[0][9]
+        self.assertIn("attachments/out/Test_Cases_DEMO_Login_002.png", description)
+        self.assertTrue(os.path.exists(self.path("attachments/out/Test_Cases_DEMO_Login_002.png")))
 
 
 class DryRun(ConvertCase):

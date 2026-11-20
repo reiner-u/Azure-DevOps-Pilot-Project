@@ -21,6 +21,9 @@ HOW A WORKBOOK IS READ (adapts to the file; nothing is hardcoded to one document
     The report's column_map shows exactly which source column was used for what.
   * If a sheet has the Expected Result in both English and French columns, it gives an "EN Import" and an "FR Import" sheet with the same
     steps (the source has no French steps) and the matching expected result.
+  * If a sheet has an "Automated (Yes or No)" column and marks some cases automated and some not, it is split once more: a Manual sheet
+    (the cases not marked automated) and an Automated sheet, so each can go into its own suite. Cases whose value is blank or unclear
+    ("N/A", "duplicate", ...) go on the Manual sheet and are named in a review note. A sheet where every case says No is not split.
   * Section heading rows (a single cell in column A) are not test cases; the heading is added to the Description of the cases under it.
   * Columns the converter does not know (Notes, Comments, Source, Testing Guidelines...) are copied into the Description under their
     own header, so nothing in the source is dropped. Reviewed By / Reviewed Date are left out and listed in the report.

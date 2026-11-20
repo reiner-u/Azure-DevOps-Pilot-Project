@@ -11,6 +11,7 @@ How the pieces fit together, in the order a document flows through them:
     variants    the "Variant" record: one import sheet to build (EN Import, FR Import, ...)
     cases       the "Case" record and CaseReader: one source row -> one Case
     planning    which sheets are test sheets and which variants to build from them
+    automation  manual cases and automated ones, split into a sheet each where the source marks them
     checks      the review notes ("blank expected result", "duplicate IDs", ...)
     writer      building the import workbook (Read Me sheet, one sheet per variant)
     label       the Microsoft sensitivity label and saving the finished workbook

@@ -86,14 +86,18 @@ def write_sheet(workbook, name, cases, area_path, state):
     ws.freeze_panes = "A2"
 
 
-def write_read_me(workbook, feature, source_name, variants, legacy, bilingual, has_images, area_path, state):
-    """The first sheet: what this workbook is and how to import it."""
+def write_read_me(workbook, feature, source_name, variants, legacy, bilingual, has_images, area_path, state,
+                  automation_column=None):
+    """The first sheet: what this workbook is and how to import it.
+    `automation_column` is the source column the manual/automated split was made on, or None when nothing was split."""
     ws = workbook.active
     ws.title = "Read Me"
     summary = "Each sheet contains " + " / ".join(f"{len(v.cases)} test cases ({v.name})" for v in variants) + "."
+    names = [v.name for v in variants]
+    sheet_names = " and ".join([", ".join(names[:-1]), names[-1]] if len(names) > 1 else names)
     if legacy:
         purpose = f"Prepared from the EN and FR worksheets in {source_name}."
-        import_text = "Import EN Import and FR Import separately in Azure DevOps. " + summary
+        import_text = f"Import {sheet_names} separately in Azure DevOps. " + summary
         important = ("Import only the language sheet you want in the selected suite. Importing both creates EN and FR test "
                      "cases. Delete earlier imports of the same file first to avoid duplicates.")
     else:
@@ -125,9 +129,14 @@ def write_read_me(workbook, feature, source_name, variants, legacy, bilingual, h
                            "and any other source columns (notes, comments...); Step Expected = source Expected Result."),
     ]
     if bilingual:
-        rows.append(("English / French", "The source has one set of steps with the expected result in English and in French. EN "
-                                         "Import carries the English expected result and FR Import the French one. The steps "
-                                         "are the same in both because the source has no French steps."))
+        rows.append(("English / French", "The source has one set of steps with the expected result in English and in French. The "
+                                         "EN sheet(s) carry the English expected result and the FR sheet(s) the French one. The "
+                                         "steps are the same in both because the source has no French steps."))
+    if automation_column:
+        rows.append(("Manual / automated", f"The source marks each case automated or not in its '{automation_column}' column, so "
+                                           f"the cases are split into a Manual and an Automated sheet. Cases left blank or "
+                                           f"unclear in that column are on the Manual sheet and are listed in the conversion "
+                                           f"report. Import the sheet that belongs in the suite you are filling."))
     if has_images:
         rows.append(("Images", "Some source cells contain pictures, not text. Those cases are named in the Description and the "
                                "picture files are saved under attachments/ next to this workbook. Attach them in ADO after "

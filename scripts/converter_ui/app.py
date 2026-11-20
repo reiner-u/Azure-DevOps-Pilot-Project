@@ -45,10 +45,10 @@ class App(tk.Tk):
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=8, pady=2)
         self.buttons = []
-        for text, dry_run, force in (("Dry run (check only, writes nothing)", True, False),
-                                     ("Convert selected", False, False),
-                                     ("Convert as a NEW version (V2, V3...)", False, True)):
-            button = ttk.Button(bar, text=text, command=lambda d=dry_run, f=force: self.start(d, f))
+        # Both buttons force a new version: a conversion always writes V2, V3... rather than skipping a converted
+        # document, so the check button must judge the same files the convert button would build.
+        for text, dry_run in (("Check Conversion Compatibility", True), ("Convert selected", False)):
+            button = ttk.Button(bar, text=text, command=lambda d=dry_run: self.start(d))
             button.pack(side="left", padx=3)
             self.buttons.append(button)
         self.progress = ttk.Progressbar(bar, length=200)
@@ -89,16 +89,13 @@ class App(tk.Tk):
         self.destroy()
 
     # ----- running a conversion -----
-    def start(self, dry_run, force):
+    def start(self, dry_run):
+        """Run the ticked documents. Always a new version (V2, V3...); existing import workbooks are never overwritten."""
         if self.busy:
             return
         names = self.files.selected()
         if not names:
             messagebox.showinfo("Nothing selected", "Tick at least one document first.")
-            return
-        if force and not dry_run and not messagebox.askyesno(
-                "New version", f"Build a new version (V2, V3...) for the {len(names)} ticked document(s)?\n"
-                               f"Existing versions are kept."):
             return
         area_path = self.folders.full_area_path()
         self.save_settings()
@@ -111,7 +108,7 @@ class App(tk.Tk):
         self.progress.configure(maximum=len(names), value=0)
         self.set_status("Working...")
         self.runner.start(self.folders.source.get(), self.folders.imports.get(), self.folders.reports.get(),
-                          names, dry_run, force, area_path)
+                          names, dry_run, True, area_path)
 
     def poll(self):
         """Handle what the background thread has reported (runs every 100 ms)."""
