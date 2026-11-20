@@ -1,7 +1,16 @@
 # Changelog
 
-Newest first. The version is `TOOL_VERSION` in `scripts/build_import_from_source.py` and shows in the window's title bar.
+Newest first. The version is `TOOL_VERSION` in `scripts/converter/settings.py` and shows in the window's title bar.
 Release zips are shared through a work channel, not GitHub.
+
+## 2026.11.20
+- Restructured for readability and modularity. No change to what the converter produces: all 22 older documents, the 7 current working copies and several deliberately broken files give identical import workbooks (every cell, row height, picture and sensitivity label), identical review notes and identical reports before and after.
+- The single 1,000-line converter script is now a package, `scripts/converter/`, with one job per file (headers, steps, cases, planning, checks, writer, label, images, convert, batch, cli). The window is `scripts/converter_ui/`. `build_import_from_source.py` and `converter_gui.py` stay as the entry points, so the batch files and commands are unchanged.
+- A test case is now a `Case` record with named fields instead of a dictionary with keys added along the way, a report line is a `ReportRow`, and a header row is a `Header`.
+- Column header wordings are a table (`HEADER_PATTERNS`) with examples; review notes are a list of small checks (`CHECKS`), so adding either is a one-line change.
+- The Area Path is passed to the conversion instead of being kept in a global that the window changed.
+- Tests: about a hundred checks on made-up documents (`run_tests.bat`), a regression tool for comparing output on your own documents (`tests/regression_check.py`), and `build_exe.bat` runs the tests before building.
+- Only wording change: the "Area Path is still the placeholder" note now names the right config keys (`area_root` and `area_rest`).
 
 ## 2026.11.19
 - Folders renamed for clarity: `source` is now `To Convert` and `imports` is now `Converted to ADO` (the `reports` folder is unchanged). The window labels say the same. Settings remembered from an older version still work; a remembered folder that no longer exists falls back to the new default.

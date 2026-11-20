@@ -9,9 +9,22 @@
 !convert_all.bat
 !convert_gui.bat
 !build_exe.bat
+!run_tests.bat
 
 !scripts/
 scripts/*
 !scripts/build_import_from_source.py
 !scripts/converter_gui.py
 !scripts/local_config.example.json
+
+!scripts/converter/
+scripts/converter/*
+!scripts/converter/*.py
+
+!scripts/converter_ui/
+scripts/converter_ui/*
+!scripts/converter_ui/*.py
+
+!tests/
+tests/*
+!tests/*.py
