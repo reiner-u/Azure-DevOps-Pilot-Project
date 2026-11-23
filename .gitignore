@@ -14,6 +14,7 @@
 !scripts/
 scripts/*
 !scripts/build_import_from_source.py
+!scripts/build_bugs_from_defects.py
 !scripts/converter_gui.py
 !scripts/local_config.example.json
 
@@ -24,6 +25,10 @@ scripts/converter/*
 !scripts/converter_ui/
 scripts/converter_ui/*
 !scripts/converter_ui/*.py
+
+!scripts/defects/
+scripts/defects/*
+!scripts/defects/*.py
 
 !tests/
 tests/*

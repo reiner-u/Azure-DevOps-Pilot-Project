@@ -1,6 +1,7 @@
 """Made-up test documents for the tests. Nothing here is real OSAP content: the cases are invented.
 
 write_workbook(path, {"Sheet name": [header row, case row, ...]}) builds an ALM-style workbook;
+defect_export(path, defect(1), ...) builds a made-up ALM defect export (for the tests of the defects package);
 add_picture(path, row0, col0) puts a tiny picture in a cell of its first sheet (without Pillow, by editing the zip);
 add_label(path) gives the workbook a fake sensitivity label part.
 """
@@ -23,6 +24,32 @@ def case(number, **changes):
                   exp="The home page is shown", type="Manual", author="A. Tester", auto="No")
     values.update(changes)
     return [values[k] for k in ("id", "br", "title", "pre", "exe", "exp", "type", "author", "auto")]
+
+
+ALM_DEFECT_HEADERS = ["Defect ID", "Summary", "Description", "Reproduction Steps", "Status", "Severity", "Priority",
+                      "Assigned To", "Detected By", "Detection Date", "Subject", "R&D Comments"]
+
+
+def defect(number, **changes):
+    """A row for ALM_DEFECT_HEADERS. Pass column values by these names: id, title, description, steps, status,
+    severity, priority, assigned_to, detected_by, detected_date, subject, comments."""
+    values = dict(id=f"DEF-{number:04d}", title=f"Sign-in page shows the wrong message, variant {number}",
+                  description="The message under the password box is the one for a locked account.",
+                  steps="1. Open the sign-in page\n2. Enter a wrong password\n3. Read the message",
+                  status="Open", severity="3-Medium", priority="2-High", assigned_to="tester1",
+                  detected_by="tester2", detected_date="2026-03-04", subject="Sign in",
+                  comments="Seen on the test environment only.")
+    values.update(changes)
+    return [values[k] for k in ("id", "title", "description", "steps", "status", "severity", "priority",
+                                "assigned_to", "detected_by", "detected_date", "subject", "comments")]
+
+
+def defect_export(path, *defects, sheet="Defects", headers=None, title_block=False):
+    """A made-up ALM defect export: one sheet, optionally with a title block above the header row."""
+    rows = [["ALM project: DEMO", None], [None, None]] if title_block else []
+    rows.append(list(headers or ALM_DEFECT_HEADERS))
+    rows.extend(defects)
+    return write_workbook(path, {sheet: rows})
 
 
 def write_workbook(path, sheets, hidden=()):
