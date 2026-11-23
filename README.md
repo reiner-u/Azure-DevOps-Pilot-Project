@@ -47,7 +47,9 @@ The code is split into small modules. `scripts/build_import_from_source.py` and 
 
 | I want to... | Change this |
 |---|---|
-| Accept a new wording of a column header | `HEADER_PATTERNS` in `scripts/converter/headers.py` (one line per field, with examples). Typos are already tolerated (`FUZZY_WORDS`, `FUZZY_CUTOFF`). |
+| Accept a new wording of a column header | `HEADER_PATTERNS` in `scripts/converter/headers.py` (one line per field, with examples). Nothing else: no other file knows header wordings. Typos are already tolerated (`FUZZY_WORDS`, `FUZZY_CUTOFF`), and order matters, because the first pattern that matches wins. |
+| Carry a new source column into the test case | Nothing. A column the converter does not know is copied into the Description under its own header (`CaseReader._read_extra_columns` in `scripts/converter/cases.py`), and the report lists which columns that was. Add a pattern only when the column needs a line of its own or changes what the converter does. |
+| Give a new column its own handling | Four places, in this order: a pattern and a `FIELD_NAMES` entry in `scripts/converter/headers.py`; a field on `Case` and the read tuples in `CaseReader._read_text_fields` (`scripts/converter/cases.py`); a line in `description()` in `scripts/converter/writer.py`; a test in `tests/`. Add it to `_note_missing_columns` as well if a document without the column should say so. A column to drop rather than copy goes in `IGNORED_COLUMN` instead. |
 | Add a review note ("check X before importing") | Write a small function in `scripts/converter/checks.py` and add it to `CHECKS` where its note should appear. |
 | Change how cells become steps | `scripts/converter/steps.py`. |
 | Change the columns or look of the import sheet, or the Read Me text | `scripts/converter/writer.py`. |
