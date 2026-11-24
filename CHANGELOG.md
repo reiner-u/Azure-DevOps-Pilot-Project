@@ -3,6 +3,13 @@
 Newest first. The version is `TOOL_VERSION` in `scripts/converter/settings.py` and shows in the window's title bar.
 Release zips are shared through a work channel, not GitHub.
 
+## 2026.11.24
+- The window fits the screen it opens on. It used to ask for 800 pixels of height with a natural height of 830, which is taller than a laptop screen at 150% scaling (about 1365x853 as the tool sees it), so the bottom row of Open buttons was never drawn at all: the only way to find it was to drag the window onto a bigger monitor and stretch it. Reported by Reiner on his laptop.
+- The footer is now laid out before the panes that stretch, so it cannot be pushed off the bottom whatever the window size, and the window caps itself to the screen height when it opens.
+- The document list, the results table and the details box start smaller (6 rows, 6 rows and 5 lines), which brings the natural height down from 830 to 702 pixels. They still stretch to fill a large monitor exactly as before, and the smallest allowed window is now 760x520 instead of 820x640.
+- Closing the window no longer leaves a 100 ms timer running, which used to make Tk log an error about a callback on a window that was already gone.
+- No change to how documents are converted.
+
 ## 2026.11.20.2
 - The window now has two tabs. "Test Case Converter" is everything that was there before, unchanged. "ALM Defect Converter" is a placeholder that says "Work in Progress": the converter for turning ALM defect exports into Azure DevOps Bug work items will live there once it is built.
 - No change to how test documents are converted.

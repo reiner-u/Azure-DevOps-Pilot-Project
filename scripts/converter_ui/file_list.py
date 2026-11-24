@@ -21,7 +21,7 @@ class FileList(ttk.LabelFrame):
         for text, command in (("Select all", lambda: self.tick("all")), ("Select none", lambda: self.tick("none")),
                               ("Select not converted yet", lambda: self.tick("new")), ("Refresh list", self.refresh)):
             ttk.Button(bar, text=text, command=command).pack(side="left", padx=2)
-        self.tree = make_tree(self, ("sel", "file", "status"), ("", "Document", "Status"), (40, 560, 260), height=8)
+        self.tree = make_tree(self, ("sel", "file", "status"), ("", "Document", "Status"), (40, 560, 260), height=6)
         self.tree.column("sel", anchor="center", stretch=False)
         self.tree.bind("<Button-1>", self._on_click)
 

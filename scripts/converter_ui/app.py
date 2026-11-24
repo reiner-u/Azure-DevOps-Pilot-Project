@@ -18,8 +18,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"Test document converter: Excel to Azure DevOps import files (v{settings.TOOL_VERSION})")
-        self.geometry("1040x800")
-        self.minsize(820, 640)
+        self.geometry(self._size_that_fits(1040, 800))
+        self.minsize(760, 520)
         self.runner = ConversionRunner()
         self.busy = False           # True while a conversion is running (buttons disabled, folder list frozen)
         self.rows = {}              # this run's results (ReportRows) by source file name
@@ -27,9 +27,17 @@ class App(tk.Tk):
         self._build()
         self.refresh()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.after(100, self.poll)
+        self._poll_job = self.after(100, self.poll)
 
     # ----- layout -----
+    def _size_that_fits(self, width, height):
+        """The wanted size, capped to the screen. A laptop at 150% reports about 1365x853, and a window taller than
+        that puts the bottom row of buttons under the taskbar where nobody finds them."""
+        margin_x, margin_y = 60, 110          # window frame, title bar and the taskbar
+        width = min(width, self.winfo_screenwidth() - margin_x)
+        height = min(height, self.winfo_screenheight() - margin_y)
+        return f"{max(width, 760)}x{max(height, 520)}"
+
     def _build(self):
         """Two tabs: the test case converter, and the ALM defect converter (a placeholder until it is built)."""
         self.tabs = ttk.Notebook(self)
@@ -41,8 +49,12 @@ class App(tk.Tk):
         self.tabs.add(self.defects, text=DEFECTS_TAB_TITLE)
 
     def _build_test_case_page(self, page):
+        """The panels, top to bottom. Pack order is not the same as the order on screen: the footer is packed first,
+        against the bottom, so that Tk hands it its space before the three stretching panes get theirs. Packed last it
+        was the first thing to be squeezed off a laptop screen, and nobody knew those buttons were there."""
         self.folders = FolderBar(page, settings_store.load(), on_folder_chosen=self._on_folder_chosen)
-        self.folders.pack(fill="x", padx=8, pady=(8, 2))
+        self.folders.pack(side="top", fill="x", padx=8, pady=(8, 2))
+        self._build_footer(page)
         self.files = FileList(page, self.folders.source.get, self.folders.imports.get, self.set_status)
         self.files.pack(fill="both", expand=True, padx=8, pady=4)
         self._build_action_bar(page)
@@ -50,7 +62,6 @@ class App(tk.Tk):
         self.results.pack(fill="both", expand=True, padx=8, pady=4)
         self.details = DetailsBox(page)
         self.details.pack(fill="both", expand=True, padx=8, pady=4)
-        self._build_footer(page)
 
     def _build_action_bar(self, page):
         bar = ttk.Frame(page)
@@ -69,7 +80,7 @@ class App(tk.Tk):
 
     def _build_footer(self, page):
         footer = ttk.Frame(page)
-        footer.pack(fill="x", padx=8, pady=(2, 8))
+        footer.pack(side="bottom", fill="x", padx=8, pady=(2, 8))
         for text, command in (("Open Converted to ADO folder", lambda: open_path(self.folders.imports.get())),
                               ("Open attachments folder (pictures)",
                                lambda: open_path(os.path.join(self.folders.imports.get(), "attachments"))),
@@ -98,6 +109,13 @@ class App(tk.Tk):
             return
         self.save_settings()
         self.destroy()
+
+    def destroy(self):
+        """Stop the 100 ms poll before the window goes, or Tk complains about a callback on a window that is gone."""
+        if getattr(self, "_poll_job", None) is not None:
+            self.after_cancel(self._poll_job)
+            self._poll_job = None
+        super().destroy()
 
     # ----- running a conversion -----
     def start(self, dry_run):
@@ -136,7 +154,7 @@ class App(tk.Tk):
                 self._finish(rows, report_path, dry_run)
             else:
                 self._finish_with_error(message[1])
-        self.after(100, self.poll)
+        self._poll_job = self.after(100, self.poll)
 
     def _end_run(self):
         self.busy = False

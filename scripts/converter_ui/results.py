@@ -12,7 +12,7 @@ class ResultsTable(ttk.LabelFrame):
         super().__init__(parent, text="2. Results (red = failed or skipped, yellow = has review notes; click a row for details)")
         self.tree = make_tree(self, ("file", "out", "status", "cases", "steps", "review"),
                               ("Document", "Import file built", "Status", "Cases", "Steps/case", "Review"),
-                              (250, 280, 160, 150, 70, 60), height=8)
+                              (250, 280, 160, 150, 70, 60), height=6)
         self.tree.tag_configure("review", background="#fff3c4")
         self.tree.tag_configure("bad", background="#f8cfcf")
         self.tree.bind("<<TreeviewSelect>>", lambda _event: on_select())
@@ -40,7 +40,7 @@ class DetailsBox(ttk.LabelFrame):
 
     def __init__(self, parent):
         super().__init__(parent, text="3. Details for the selected result")
-        self.text = tk.Text(self, height=9, wrap="word", state="disabled", font=("Segoe UI", 9))
+        self.text = tk.Text(self, height=5, wrap="word", state="disabled", font=("Segoe UI", 9))
         scrollbar = ttk.Scrollbar(self, command=self.text.yview)
         self.text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")

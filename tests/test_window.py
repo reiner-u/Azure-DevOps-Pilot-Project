@@ -40,6 +40,57 @@ class Texts(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_TK, "needs tkinter and a screen")
+class WindowSize(unittest.TestCase):
+    """The window has to fit the screen it opens on. A laptop at 150% scaling reports about 1365x853, and the window
+    used to ask for 800px with a natural height of 830px, so Tk dropped the footer: the four Open buttons were never
+    laid out at all and nobody knew they existed."""
+
+    def setUp(self):
+        from converter_ui import settings_store
+        from converter_ui.app import App
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        settings_store.SETTINGS_FILE = os.path.join(self._tmp.name, "gui_settings.json")
+        self.app = App()
+        self.addCleanup(self.app.destroy)
+        self.app.withdraw()
+
+    def open_buttons(self):
+        """Every button in the window whose label starts with 'Open': the footer row."""
+        from tkinter import ttk
+        found = []
+
+        def walk(widget):
+            for child in widget.winfo_children():
+                if isinstance(child, ttk.Button) and str(child.cget("text")).startswith("Open"):
+                    found.append(child)
+                walk(child)
+
+        walk(self.app)
+        return found
+
+    def test_the_page_is_not_taller_than_the_screen(self):
+        self.app.update()
+        self.assertLessEqual(self.app.winfo_reqheight(), self.app.winfo_screenheight() - 110)
+
+    def test_the_footer_buttons_fit_in_a_small_window(self):
+        for height in (520, 610, 658, 743):
+            self.app.geometry(f"1040x{height}")
+            self.app.update()
+            buttons = self.open_buttons()
+            self.assertEqual(len(buttons), 4)
+            for button in buttons:
+                bottom = (button.winfo_rooty() - self.app.winfo_rooty()) + button.winfo_height()
+                self.assertLessEqual(bottom, self.app.winfo_height(),
+                                     f"footer button {button.cget('text')!r} falls off a {height}px window")
+
+    def test_the_window_opens_no_larger_than_the_screen(self):
+        width, height = (int(n) for n in self.app.geometry().split("+")[0].split("x"))
+        self.assertLessEqual(width, self.app.winfo_screenwidth())
+        self.assertLessEqual(height, self.app.winfo_screenheight())
+
+
+@unittest.skipUnless(HAVE_TK, "needs tkinter and a screen")
 class HiddenWindow(unittest.TestCase):
     def test_dry_run_through_the_real_window(self):
         from converter_ui import settings_store
