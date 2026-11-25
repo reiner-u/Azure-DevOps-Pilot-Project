@@ -18,6 +18,7 @@ import argparse
 import getpass
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -38,6 +39,10 @@ def build_parser():
     parser.add_argument("--count-attachments", action="store_true",
                         help="also count how many defects have attachments (one extra query)")
     parser.add_argument("--fields", action="store_true", help="list the REST field names this project uses")
+    parser.add_argument("--estimate", nargs="?", type=int, const=20, metavar="N",
+                        help="sample N defects that have attachments (default 20) and work out what pulling them all "
+                             "would cost in files, size and time. Downloads the sample into memory only")
+    parser.add_argument("--seed", type=int, help="make --estimate pick the same sample again")
     parser.add_argument("--user", help="the ALM user name (ours is of the form FirstnameLastname.Surname)")
     parser.add_argument("--cookie", help="run with a signed-in browser session instead: paste that tab's Cookie "
                                          "header. Read only, and it never logs the browser out")
@@ -65,6 +70,9 @@ def report(session, args):
         for name in sorted(alm.DEFECT_FIELDS):
             print(f"   {name:22} {alm.DEFECT_FIELDS[name]}")
 
+    if args.estimate:
+        estimate(session, args)
+
     if args.defect:
         fields = next(session.defects(query=f"{{id[{args.defect}]}}", limit=1), None)
         if not fields:
@@ -84,6 +92,57 @@ def report(session, args):
             for item in files:
                 print(f"   saved {session.download_attachment(args.defect, item.get('name'), args.download)}")
     return 0
+
+
+def human_bytes(count):
+    for unit in ("bytes", "KB", "MB", "GB", "TB"):
+        if count < 1024 or unit == "TB":
+            return f"{count:,.0f} {unit}" if unit == "bytes" else f"{count:,.1f} {unit}"
+        count /= 1024
+
+
+def human_time(seconds):
+    if seconds < 90:
+        return f"{seconds:.0f} seconds"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f} minutes"
+    return f"{seconds / 3600:.1f} hours"
+
+
+def estimate(session, args):
+    """Sample some defects that have attachments and say what pulling all of them would cost."""
+    total = session.defect_count(alm.HAS_ATTACHMENT)
+    print(f"\nsizing a full extract from {total:,} defects that have attachments")
+    print(f"   picking {args.estimate} of them at random...")
+    started = time.perf_counter()
+    ids = session.sample_defect_ids(args.estimate, alm.HAS_ATTACHMENT, seed=args.seed)
+    print(f"   sampled {len(ids)} defects in {human_time(time.perf_counter() - started)}: "
+          f"{', '.join(str(i) for i in ids[:8])}{'...' if len(ids) > 8 else ''}")
+    print("   reading their attachments (into memory, nothing is written to disk)...")
+    records = alm.measure_defects(session, ids)
+    projection = alm.project_extract(records, total)
+    if not projection:
+        print("   nothing to measure")
+        return
+
+    print(f"\nthe sample:")
+    print(f"   files per defect      {projection['files_min']} / {projection['files_median']} / "
+          f"{projection['files_max']}   (smallest / middle / largest)")
+    print(f"   size per defect       {human_bytes(projection['average_bytes'])} on average")
+    print(f"   listing one defect    {projection['seconds_listing'] / total:.2f} seconds")
+    print(f"   download speed        {human_bytes(projection['throughput'])}/second")
+
+    print(f"\nso pulling all {total:,} of them would be roughly:")
+    print(f"   files                 {projection['files_total']:,}")
+    print(f"   size                  {human_bytes(projection['bytes_total'])}")
+    print(f"   time                  {human_time(projection['seconds_total'])} in one sequential pass")
+    print(f"                         ({human_time(projection['seconds_listing'])} of it just asking ALM what each "
+          f"defect has, {human_time(projection['seconds_downloading'])} actually moving bytes)")
+    print(f"\n   Rough: it is {projection['sampled']} defects out of {total:,}, and attachment sizes vary a lot. "
+          f"Run it again with a different --seed to see how much the answer moves.")
+    if projection["seconds_listing"] > projection["seconds_downloading"]:
+        print("   Most of the time is per-request overhead rather than data, so running several requests at once "
+              "would cut it down a lot more than a faster connection would.")
 
 
 def explain(error):

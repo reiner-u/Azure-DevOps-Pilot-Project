@@ -232,6 +232,54 @@ class Attachments(unittest.TestCase):
         self.assertEqual(opener.calls[0]["headers"].get("Accept"), "application/octet-stream")
 
 
+class SizingAnExtract(unittest.TestCase):
+    """--estimate samples a few defects and multiplies up. The arithmetic is tested here; the sampling is one call."""
+
+    def records(self):
+        return [{"id": "1", "files": 2, "bytes": 2_000_000, "fetched": 2, "list_seconds": 0.4, "download_seconds": 1.0},
+                {"id": "2", "files": 1, "bytes": 1_000_000, "fetched": 1, "list_seconds": 0.4, "download_seconds": 0.5},
+                {"id": "3", "files": 5, "bytes": 9_000_000, "fetched": 5, "list_seconds": 0.4, "download_seconds": 4.5}]
+
+    def test_the_projection(self):
+        p = alm.project_extract(self.records(), 1000)
+        self.assertEqual(p["sampled"], 3)
+        self.assertEqual((p["files_min"], p["files_median"], p["files_max"]), (1, 2, 5))
+        self.assertEqual(p["files_total"], 2667)                      # 8 files over 3 defects, times 1000
+        self.assertEqual(p["bytes_total"], 4_000_000_000)             # 4 MB each on average
+        self.assertAlmostEqual(p["throughput"], 2_000_000)            # 12 MB in 6 seconds
+        self.assertAlmostEqual(p["seconds_listing"], 400)             # 0.4 s each
+        self.assertAlmostEqual(p["seconds_downloading"], 2000)
+        self.assertAlmostEqual(p["seconds_total"], 2400)
+
+    def test_an_empty_sample_says_nothing_rather_than_dividing_by_zero(self):
+        self.assertEqual(alm.project_extract([], 1000), {})
+
+    def test_a_sample_with_no_downloads_does_not_divide_by_zero(self):
+        records = [{"id": "1", "files": 1, "bytes": 900, "fetched": 0, "list_seconds": 0.2, "download_seconds": 0.0}]
+        p = alm.project_extract(records, 10)
+        self.assertEqual(p["throughput"], 0)
+        self.assertEqual(p["seconds_downloading"], 0)
+
+    def test_a_huge_attachment_is_counted_but_not_fetched(self):
+        answer = {"entities": [entity(name="big.zip", **{"file-size": str(200 * 1024 * 1024)}),
+                               entity(name="small.png", **{"file-size": "100"})]}
+        session, opener = session_with({"/qcbin/rest/domains/D/projects/P/defects/7/attachments": answer,
+                                        "/qcbin/rest/domains/D/projects/P/defects/7/attachments/small.png": b"x" * 100})
+        record = alm.measure_defects(session, ["7"])[0]
+        self.assertEqual(record["files"], 2)
+        self.assertEqual(record["fetched"], 1)                        # the 200 MB one was not pulled
+        self.assertEqual(record["bytes"], 200 * 1024 * 1024 + 100)    # but its size still counts
+        self.assertNotIn("GET /qcbin/rest/domains/D/projects/P/defects/7/attachments/big.zip", opener.paths())
+
+    def test_the_sample_is_repeatable_with_a_seed(self):
+        page = {"entities": [entity(id="42")], "TotalResults": 500}
+        session, _ = session_with({"/qcbin/rest/domains/D/projects/P/defects": page})
+        first = session.sample_defect_ids(5, alm.HAS_ATTACHMENT, seed=7)
+        second = session.sample_defect_ids(5, alm.HAS_ATTACHMENT, seed=7)
+        self.assertEqual(len(first), 5)
+        self.assertEqual(first, second)
+
+
 class Problems(unittest.TestCase):
     def test_an_http_error_says_what_and_why(self):
         session, _ = session_with(errors={"/qcbin/rest/domains/D/projects/P/defects": 403})

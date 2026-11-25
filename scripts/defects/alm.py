@@ -26,7 +26,9 @@ import base64
 import http.cookiejar
 import json
 import os
+import random
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -305,6 +307,29 @@ class AlmSession:
         data = self.json_request("GET", self._project_path(f"/defects/{int(defect_id)}/attachments"))
         return [fields_of(entity) for entity in data.get("entities", [])]
 
+    def fetch_attachment(self, defect_id, name):
+        """The bytes of one attachment, without writing anything to disk (used for sizing a run)."""
+        path = self._project_path(f"/defects/{int(defect_id)}/attachments/{urllib.parse.quote(name)}")
+        _status, raw = self.request("GET", path, accept="application/octet-stream")
+        return raw
+
+    def sample_defect_ids(self, count, query=None, seed=None):
+        """`count` defect IDs picked at random from the ones that match, one cheap request each."""
+        total = self.defect_count(query)
+        if not total:
+            return []
+        picker = random.Random(seed)
+        wanted = sorted(picker.sample(range(1, total + 1), min(count, total)))
+        ids = []
+        for index in wanted:
+            params = {"page-size": 1, "start-index": index, "fields": "id"}
+            if query:
+                params["query"] = query
+            data = self.json_request("GET", self._project_path("/defects?" + urllib.parse.urlencode(params)))
+            for entity in data.get("entities", []):
+                ids.append(fields_of(entity).get("id"))
+        return ids
+
     def download_attachment(self, defect_id, name, folder):
         """Save one attachment into `folder`, in a subfolder named after the defect. Returns the path written."""
         path = self._project_path(f"/defects/{int(defect_id)}/attachments/{urllib.parse.quote(name)}")
@@ -315,6 +340,61 @@ class AlmSession:
         with open(out, "wb") as fh:
             fh.write(raw)
         return out
+
+
+def measure_defects(session, defect_ids, max_download_bytes=50 * 1024 * 1024):
+    """Time what it costs to read one defect's attachments, for each of `defect_ids`.
+
+    Returns one record per defect: how many files, how many bytes, how long listing took and how long the bytes took.
+    A file bigger than `max_download_bytes` is counted by its reported size but not fetched, so one huge attachment
+    cannot dominate the sample."""
+    records = []
+    for defect_id in defect_ids:
+        started = time.perf_counter()
+        files = session.attachments(defect_id)
+        list_seconds = time.perf_counter() - started
+        byte_count, download_seconds, fetched = 0, 0.0, 0
+        for item in files:
+            reported = int(item.get("file-size") or 0)
+            if reported and reported > max_download_bytes:
+                byte_count += reported
+                continue
+            started = time.perf_counter()
+            raw = session.fetch_attachment(defect_id, item.get("name"))
+            download_seconds += time.perf_counter() - started
+            byte_count += len(raw)
+            fetched += 1
+        records.append({"id": defect_id, "files": len(files), "bytes": byte_count, "fetched": fetched,
+                        "list_seconds": list_seconds, "download_seconds": download_seconds})
+    return records
+
+
+def project_extract(records, total_defects):
+    """What a full extract would cost, from a sample. Pure arithmetic, so it can be tested without a server."""
+    sampled = len(records)
+    if not sampled:
+        return {}
+    files = [r["files"] for r in records]
+    byte_counts = [r["bytes"] for r in records]
+    list_seconds = sum(r["list_seconds"] for r in records)
+    download_seconds = sum(r["download_seconds"] for r in records)
+    fetched_bytes = sum(r["bytes"] for r in records if r["fetched"])
+    throughput = fetched_bytes / download_seconds if download_seconds > 0 else 0
+    average_bytes = sum(byte_counts) / sampled
+    seconds_listing = total_defects * (list_seconds / sampled)
+    seconds_downloading = (total_defects * average_bytes / throughput) if throughput else 0
+    ordered = sorted(files)
+    return {
+        "sampled": sampled,
+        "files_min": ordered[0], "files_median": ordered[sampled // 2], "files_max": ordered[-1],
+        "files_total": round(total_defects * sum(files) / sampled),
+        "bytes_total": round(total_defects * average_bytes),
+        "average_bytes": average_bytes,
+        "throughput": throughput,
+        "seconds_listing": seconds_listing,
+        "seconds_downloading": seconds_downloading,
+        "seconds_total": seconds_listing + seconds_downloading,
+    }
 
 
 def connect(config=None, credentials=None, trace=False, methods=("basic",)):
