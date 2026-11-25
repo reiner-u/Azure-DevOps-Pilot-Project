@@ -43,6 +43,9 @@ def build_parser():
                         help="sample N defects that have attachments (default 20) and work out what pulling them all "
                              "would cost in files, size and time. Downloads the sample into memory only")
     parser.add_argument("--seed", type=int, help="make --estimate pick the same sample again")
+    parser.add_argument("--status", help="only defects with this ALM status, e.g. \"Ready For Retest\"")
+    parser.add_argument("--module", help="only defects in this module (the user-12 field), e.g. \"Personal Info\"")
+    parser.add_argument("--query", help="a raw ALM query, for anything the two options above do not cover")
     parser.add_argument("--user", help="the ALM user name (ours is of the form FirstnameLastname.Surname)")
     parser.add_argument("--cookie", help="run with a signed-in browser session instead: paste that tab's Cookie "
                                          "header. Read only, and it never logs the browser out")
@@ -54,16 +57,25 @@ def build_parser():
     return parser
 
 
+def chosen_query(args):
+    """The filter the person asked for on the command line, if any."""
+    return alm.combine_queries(alm.query_for(status=args.status, user_12=args.module), args.query)
+
+
 def report(session, args):
     """Everything the check prints, once there is a session (signed in, or borrowed from a browser)."""
     print(f"signed in as: {session.is_authenticated() or '(ALM did not say)'}")
 
+    query = chosen_query(args)
     total = session.defect_count()
     print(f"defects in the project: {total:,}")
+    if query:
+        print(f"matching {query}: {session.defect_count(query):,}")
     if args.count_attachments:
-        with_files = session.defect_count(alm.HAS_ATTACHMENT)
+        with_files = session.defect_count(alm.combine_queries(alm.HAS_ATTACHMENT, query))
         share = f" ({with_files / total:.0%})" if total else ""
-        print(f"defects with attachments: {with_files:,}{share}   <- ALM's own flag, not an estimate")
+        print(f"defects with attachments{' (filtered)' if query else ''}: {with_files:,}{share}"
+              f"   <- ALM's own flag, not an estimate")
 
     if args.fields:
         print("\nfields this client knows about:")
@@ -111,11 +123,13 @@ def human_time(seconds):
 
 def estimate(session, args):
     """Sample some defects that have attachments and say what pulling all of them would cost."""
-    total = session.defect_count(alm.HAS_ATTACHMENT)
-    print(f"\nsizing a full extract from {total:,} defects that have attachments")
+    query = alm.combine_queries(alm.HAS_ATTACHMENT, chosen_query(args))
+    total = session.defect_count(query)
+    scope = f" matching {query}" if chosen_query(args) else ""
+    print(f"\nsizing a full extract from {total:,} defects that have attachments{scope}")
     print(f"   picking {args.estimate} of them at random...")
     started = time.perf_counter()
-    ids = session.sample_defect_ids(args.estimate, alm.HAS_ATTACHMENT, seed=args.seed)
+    ids = session.sample_defect_ids(args.estimate, query, seed=args.seed)
     print(f"   sampled {len(ids)} defects in {human_time(time.perf_counter() - started)}: "
           f"{', '.join(str(i) for i in ids[:8])}{'...' if len(ids) > 8 else ''}")
     print("   reading their attachments (into memory, nothing is written to disk)...")
@@ -140,9 +154,11 @@ def estimate(session, args):
           f"defect has, {human_time(projection['seconds_downloading'])} actually moving bytes)")
     print(f"\n   Rough: it is {projection['sampled']} defects out of {total:,}, and attachment sizes vary a lot. "
           f"Run it again with a different --seed to see how much the answer moves.")
-    if projection["seconds_listing"] > projection["seconds_downloading"]:
-        print("   Most of the time is per-request overhead rather than data, so running several requests at once "
-              "would cut it down a lot more than a faster connection would.")
+    per_file = projection["average_bytes"] / max(1, projection["files_total"] / total)
+    if projection["throughput"] and per_file / projection["throughput"] > 0.1:
+        print(f"   The average file is only {human_bytes(per_file)}, so most of that time is waiting for round trips "
+              f"rather than moving data: running several requests at once would cut it down far more than a faster "
+              f"connection would.")
 
 
 def explain(error):

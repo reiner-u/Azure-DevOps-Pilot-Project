@@ -27,6 +27,7 @@ import http.cookiejar
 import json
 import os
 import random
+import re
 import ssl
 import time
 import urllib.error
@@ -64,6 +65,20 @@ DEFECT_FIELDS = {
     "user-06": "test environment", "user-11": "language", "user-12": "module", "user-25": "fix details (HTML)",
 }
 HAS_ATTACHMENT = "{attachment['Y']}"        # ALM's own query syntax, for counting the defects that have files
+
+
+def query_for(**conditions):
+    """An ALM query from field=value pairs: query_for(status="Closed") -> "{status['Closed']}".
+
+    ALM filters server-side, so a query is what keeps a run down to one module or one status instead of all 27,000."""
+    parts = [f"{field.replace('_', '-')}['{value}']" for field, value in conditions.items() if value]
+    return "{" + "; ".join(parts) + "}" if parts else None
+
+
+def combine_queries(*queries):
+    """Several ALM queries as one: the conditions go inside a single pair of braces, separated by semicolons."""
+    parts = [q.strip().lstrip("{").rstrip("}").strip() for q in queries if q]
+    return "{" + "; ".join(p for p in parts if p) + "}" if parts else None
 PAGE_SIZE = 100                      # ALM pages its results; this is how many entities to ask for at a time
 
 
@@ -242,12 +257,17 @@ class AlmSession:
             raise AlmError(f"unknown sign-in method {method!r}; one of {AUTH_METHODS}")
 
     def is_authenticated(self):
-        """-> the user name ALM thinks we are, or None."""
+        """-> the user name ALM thinks we are, or None. The answer may be JSON or XML depending on the server."""
         try:
-            data = self.json_request("GET", "/qcbin/v2/rest/is-authenticated")
+            _status, raw = self.request("GET", "/qcbin/v2/rest/is-authenticated")
         except AlmError:
             return None
-        return (data.get("AuthenticationInfo") or {}).get("username")
+        text = raw.decode("utf-8", "replace")
+        try:
+            return (json.loads(text).get("AuthenticationInfo") or {}).get("username")
+        except ValueError:
+            match = re.search(r"<Username>([^<]+)</Username>", text, re.I)
+            return match.group(1) if match else None
 
     def logout(self):
         if self.borrowed_session:         # the browser still needs this session

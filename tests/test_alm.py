@@ -232,6 +232,30 @@ class Attachments(unittest.TestCase):
         self.assertEqual(opener.calls[0]["headers"].get("Accept"), "application/octet-stream")
 
 
+class Filtering(unittest.TestCase):
+    """ALM filters server-side, which is how a run is kept to one module instead of all 27,000 defects."""
+
+    def test_a_query_from_fields(self):
+        self.assertEqual(alm.query_for(status="Closed"), "{status['Closed']}")
+        self.assertEqual(alm.query_for(status="Closed", user_12="Personal Info"),
+                         "{status['Closed']; user-12['Personal Info']}")
+
+    def test_blank_values_are_left_out(self):
+        self.assertIsNone(alm.query_for(status=None, user_12=""))
+        self.assertEqual(alm.query_for(status="New", user_12=None), "{status['New']}")
+
+    def test_queries_combine_inside_one_pair_of_braces(self):
+        self.assertEqual(alm.combine_queries(alm.HAS_ATTACHMENT, "{status['New']}"),
+                         "{attachment['Y']; status['New']}")
+        self.assertEqual(alm.combine_queries(alm.HAS_ATTACHMENT, None), "{attachment['Y']}")
+        self.assertIsNone(alm.combine_queries(None, None))
+
+    def test_the_username_is_read_from_an_xml_answer_too(self):
+        xml = b"<?xml version='1.0'?><AuthenticationInfo><Username>ReinerEthan.Umila</Username></AuthenticationInfo>"
+        session, _ = session_with({"/qcbin/v2/rest/is-authenticated": xml})
+        self.assertEqual(session.is_authenticated(), "ReinerEthan.Umila")
+
+
 class SizingAnExtract(unittest.TestCase):
     """--estimate samples a few defects and multiplies up. The arithmetic is tested here; the sampling is one call."""
 
