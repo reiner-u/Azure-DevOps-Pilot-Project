@@ -258,9 +258,15 @@ class AlmSession:
 
     def is_authenticated(self):
         """-> the user name ALM thinks we are, or None. The answer may be JSON or XML depending on the server."""
-        try:
-            _status, raw = self.request("GET", "/qcbin/v2/rest/is-authenticated")
-        except AlmError:
+        raw = None
+        for path, accept in (("/qcbin/v2/rest/is-authenticated", "application/json"),
+                             ("/qcbin/rest/is-authenticated", "application/xml")):
+            try:
+                _status, raw = self.request("GET", path, accept=accept)
+                break
+            except AlmError:
+                continue
+        if raw is None:
             return None
         text = raw.decode("utf-8", "replace")
         try:
