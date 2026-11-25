@@ -1,7 +1,9 @@
 {
   "_comment": "Copy this to alm_config.json and fill it in. NO CREDENTIALS IN HERE: set ALM_USER and ALM_PASSWORD (or ALM_CLIENT_ID and ALM_API_KEY_SECRET) in the environment instead. alm_config.json is never committed.",
-  "base_url": "https://alm.example.gov.on.ca",
+  "base_url": "https://almcsc.saas.microfocus.com",
   "domain": "YOUR_DOMAIN",
   "project": "YOUR_PROJECT",
-  "verify_ssl": true
+  "verify_ssl": true,
+  "_customer_id_note": "ALM SaaS only (a *.saas.microfocus.com server). Leave it out for on-premises. Your site administrator has the value; the reference calls it customer-id.",
+  "customer_id": ""
 }

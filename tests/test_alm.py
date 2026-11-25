@@ -4,6 +4,7 @@ Nothing here touches a real ALM: a fake opener records the requests and hands ba
 checking -- the order of the sign-in calls, the X-XSRF-TOKEN rule, paging, and where downloads land -- are tested
 without a server, a VPN or a password.
 """
+import base64
 import http.cookiejar
 import io
 import json
@@ -67,21 +68,40 @@ class SigningIn(unittest.TestCase):
     def test_a_password_login_authenticates_then_opens_a_session(self):
         session, opener = session_with()
         session.login(("password", "someone", "secret"))
-        self.assertEqual(opener.paths(), ["POST /qcbin/authentication-point/alm-authenticate",
+        self.assertEqual(opener.paths(), ["GET /qcbin/authentication-point/authenticate",
                                           "POST /qcbin/rest/site-session"])
-        self.assertIn(b"someone", opener.calls[0]["body"])
+
+    def test_the_default_form_is_http_basic(self):
+        session, opener = session_with()
+        session.login(("password", "someone", "secret"))
+        header = opener.calls[0]["headers"].get("Authorization")
+        self.assertEqual(header, "Basic " + base64.b64encode(b"someone:secret").decode())
 
     def test_an_api_key_login_opens_the_session_by_itself(self):
         session, opener = session_with()
         session.login(("apikey", "apikey-123", "shh"))
         self.assertEqual(opener.paths(), ["POST /qcbin/rest/oauth2/login"])
 
-    def test_a_server_that_refuses_json_gets_the_xml_form(self):
-        session, opener = session_with(errors={("POST", "/qcbin/authentication-point/alm-authenticate"): 400})
+    def test_the_other_forms_are_tried_in_turn_when_asked(self):
+        """--auth all walks the list; each shape costs a failed attempt, which is why it is not the default."""
+        session, opener = session_with(errors={"/qcbin/authentication-point/authenticate": 401,
+                                               "/qcbin/authentication-point/alm-authenticate": 401})
         with self.assertRaises(alm.AlmError):
-            session.login(("password", "someone", "secret"))      # both forms refused
-        self.assertEqual(opener.paths().count("POST /qcbin/authentication-point/alm-authenticate"), 2)
-        self.assertIn(b"<alm-authentication>", opener.calls[1]["body"])
+            session.login(("password", "someone", "secret"), methods=alm.AUTH_METHODS)
+        self.assertEqual(opener.paths(), ["GET /qcbin/authentication-point/authenticate",
+                                          "POST /qcbin/authentication-point/alm-authenticate",
+                                          "POST /qcbin/authentication-point/alm-authenticate",
+                                          "POST /qcbin/authentication-point/alm-authenticate"])
+        self.assertIn(b'"alm-authentication"', opener.calls[1]["body"])     # the reference's example shape
+        self.assertIn(b'"alm-authenticate"', opener.calls[2]["body"])       # its schema shape, which differs
+        self.assertIn(b"<alm-authentication>", opener.calls[3]["body"])     # the older XML form
+
+    def test_the_first_form_that_works_stops_the_search(self):
+        session, opener = session_with(errors={"/qcbin/authentication-point/authenticate": 401})
+        session.login(("password", "someone", "secret"), methods=alm.AUTH_METHODS)
+        self.assertEqual(opener.paths()[:2], ["GET /qcbin/authentication-point/authenticate",
+                                              "POST /qcbin/authentication-point/alm-authenticate"])
+        self.assertNotIn("POST /qcbin/rest/oauth2/login", opener.paths())
 
     def test_logging_out_is_not_allowed_to_fail_a_run(self):
         session, opener = session_with(errors={"/qcbin/authentication-point/logout": 500})
@@ -104,6 +124,28 @@ class SigningIn(unittest.TestCase):
         self.assertIsNone(session.is_authenticated())
 
 
+class ABorrowedBrowserSession(unittest.TestCase):
+    """--cookie runs read-only against a session that belongs to the person's browser."""
+
+    def test_the_cookies_are_sent_and_no_sign_in_happens(self):
+        session, opener = session_with({"/qcbin/v2/rest/is-authenticated": {"AuthenticationInfo": {"username": "me"}}})
+        session.use_cookie_header("LWSSO_COOKIE_KEY=abc; QCSession=def; XSRF-TOKEN=ghi")
+        self.assertEqual(session.is_authenticated(), "me")
+        self.assertEqual(opener.paths(), ["GET /qcbin/v2/rest/is-authenticated"])      # no sign-in calls
+        self.assertEqual(sorted(c.name for c in session.jar), ["LWSSO_COOKIE_KEY", "QCSession", "XSRF-TOKEN"])
+
+    def test_logging_out_would_end_the_browser_session_so_it_does_not_happen(self):
+        session, opener = session_with()
+        with session.use_cookie_header("QCSession=def"):
+            pass
+        self.assertNotIn("GET /qcbin/authentication-point/logout", opener.paths())
+
+    def test_rubbish_in_the_header_is_skipped(self):
+        session, _ = session_with()
+        session.use_cookie_header("  ; QCSession=def ;novalue; =noname")
+        self.assertEqual([c.name for c in session.jar], ["QCSession"])
+
+
 class TheXsrfRule(unittest.TestCase):
     """ALM rejects every non-GET that does not carry the X-XSRF-TOKEN header."""
 
@@ -120,6 +162,22 @@ class TheXsrfRule(unittest.TestCase):
     def test_a_get_does_not_need_it(self):
         self.session.request("GET", "/qcbin/rest/domains/D/projects/P/defects")
         self.assertNotIn("X-xsrf-token", self.opener.calls[0]["headers"])
+
+
+class SaaS(unittest.TestCase):
+    """ALM SaaS wants a customer-id header; an on-premises server neither needs nor gets one."""
+
+    def test_the_customer_id_is_sent_when_configured(self):
+        config = alm.AlmConfig(base_url="https://almcsc.saas.microfocus.com", domain="D", project="P",
+                               customer_id="12345")
+        opener = FakeOpener()
+        alm.AlmSession(config, opener=opener).request("GET", "/qcbin/v2/rest/is-authenticated")
+        self.assertEqual(opener.calls[0]["headers"].get("Customer-id"), "12345")
+
+    def test_no_header_without_it(self):
+        session, opener = session_with()
+        session.request("GET", "/qcbin/v2/rest/is-authenticated")
+        self.assertNotIn("Customer-id", opener.calls[0]["headers"])
 
 
 class ReadingDefects(unittest.TestCase):

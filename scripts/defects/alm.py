@@ -22,6 +22,7 @@ Credentials are never written down here. The reference's own advice is "Do not i
 script or job", so they come from the environment or are typed when asked for; scripts/alm_config.json (git-ignored)
 holds only the server address, domain and project.
 """
+import base64
 import http.cookiejar
 import json
 import os
@@ -35,6 +36,32 @@ from typing import Optional
 from converter.settings import SCRIPTS_DIR
 
 CONFIG_FILE = os.path.join(SCRIPTS_DIR, "alm_config.json")
+
+# How to send a user name and password. ALM has had several over the years and a server may accept only some of them:
+#   basic  GET /qcbin/authentication-point/authenticate with an HTTP Basic header. The long-standing one, and the
+#          only one where a 401 is proof that the credentials themselves were refused rather than not understood.
+#   json   POST /qcbin/authentication-point/alm-authenticate, body shaped as the 24.1 reference's example
+#   json2  the same, shaped as that reference's schema instead (the two disagree with each other)
+#   xml    the same, in the older XML form
+# They are tried in this order, and trying one costs a failed sign-in attempt, so ALM can lock the account: prefer
+# naming the one that works once it is known.
+AUTH_METHODS = ("basic", "json", "json2", "xml")
+
+# What the defect fields are called over REST. These are ALM's internal names, not the column headings in an export,
+# and they were read off a real defect in OSAP / Student_Facing_Application. The user-NN fields are this project's own
+# custom fields, so they mean nothing anywhere else.
+DEFECT_FIELDS = {
+    "id": "defect ID", "name": "summary", "description": "description (HTML)", "status": "status",
+    "severity": "severity", "priority": "priority", "owner": "assigned to", "detected-by": "detected by",
+    "creation-time": "detected on date", "closing-date": "closing date", "last-modified": "modified date",
+    "attachment": "has attachments (Y/N)", "reproducible": "reproducible", "subject": "subject folder ID",
+    "dev-comments": "comments (HTML)", "detection-version": "detected in build", "closing-version": "closed in version",
+    "detected-in-rel": "detected in release", "target-rel": "target release", "environment": "environment",
+    "actual-fix-time": "actual fix time", "estimated-fix-time": "estimated fix time",
+    "user-01": "project name", "user-03": "resolution", "user-04": "defect type", "user-05": "test phase",
+    "user-06": "test environment", "user-11": "language", "user-12": "module", "user-25": "fix details (HTML)",
+}
+HAS_ATTACHMENT = "{attachment['Y']}"        # ALM's own query syntax, for counting the defects that have files
 PAGE_SIZE = 100                      # ALM pages its results; this is how many entities to ask for at a time
 
 
@@ -45,10 +72,11 @@ class AlmError(Exception):
 @dataclass
 class AlmConfig:
     """Where ALM is. Not secrets: see load_config()."""
-    base_url: str = ""               # e.g. https://alm.example.gov.on.ca (no /qcbin)
+    base_url: str = ""               # e.g. https://almcsc.saas.microfocus.com (no /qcbin)
     domain: str = ""
     project: str = ""
     verify_ssl: bool = True          # only turn this off for a server with a self-signed certificate, knowingly
+    customer_id: str = ""            # SaaS only: the reference says SaaS calls need a customer-id header
 
     @property
     def qcbin(self):
@@ -91,8 +119,10 @@ def fields_of(entity):
 class AlmSession:
     """One logged-in ALM session. Use it as a context manager so it always logs out again."""
 
-    def __init__(self, config, opener=None):
+    def __init__(self, config, opener=None, trace=False):
         self.config = config
+        self.borrowed_session = False     # True when the cookies came from a browser: never log that session out
+        self.trace = trace            # print every call and its status: the first thing to turn on when ALM says no
         self.jar = http.cookiejar.CookieJar()
         if opener is not None:
             self.opener = opener                      # the tests pass a fake one in here
@@ -107,7 +137,8 @@ class AlmSession:
     def _xsrf(self):
         return next((c.value for c in self.jar if c.name == "XSRF-TOKEN"), None)
 
-    def request(self, method, path, body=None, accept="application/json", content_type="application/json"):
+    def request(self, method, path, body=None, accept="application/json", content_type="application/json",
+                extra_headers=None):
         """One call. `path` starts at /qcbin. Returns (status, bytes). Raises AlmError for anything ALM refused."""
         url = self.config.base_url.rstrip("/") + path
         data = body if isinstance(body, bytes) else (json.dumps(body).encode("utf-8") if body is not None else None)
@@ -115,16 +146,25 @@ class AlmSession:
         request.add_header("Accept", accept)
         if data is not None:
             request.add_header("Content-Type", content_type)
+        if self.config.customer_id:                    # ALM SaaS (*.saas.microfocus.com) wants this on every call
+            request.add_header("customer-id", self.config.customer_id)
+        for name, value in (extra_headers or {}).items():
+            request.add_header(name, value)
         if method != "GET":
             token = self._xsrf()
             if token:                                  # ALM rejects every non-GET without this header
                 request.add_header("X-XSRF-TOKEN", token)
         try:
             with self.opener.open(request) as response:
+                if self.trace:
+                    print(f"   {method} {path} -> {response.status}")
                 return response.status, response.read()
         except urllib.error.HTTPError as e:
             detail = (e.read() or b"")[:400].decode("utf-8", "replace")
             e.close()                                  # an HTTPError holds the response open until it is closed
+            if self.trace:
+                print(f"   {method} {path} -> {e.code}  {detail[:160]}")
+                print(f"      cookies so far: {[c.name for c in self.jar] or 'none'}")
             raise AlmError(f"{method} {path} -> HTTP {e.code}. {detail}") from None
         except urllib.error.URLError as e:
             raise AlmError(f"{method} {path} -> could not reach ALM: {e.reason}. Check base_url, the network and "
@@ -140,27 +180,64 @@ class AlmSession:
             raise AlmError(f"{method} {path} returned something that is not JSON: {raw[:200]!r}") from None
 
     # ----- signing in and out -----
-    def login(self, credentials):
-        """`credentials` is what credentials_from_environment() returns."""
+    def use_cookie_header(self, header):
+        """Borrow a signed-in browser session: paste its Cookie header ("NAME=value; NAME=value").
+
+        A stop-gap for while an API key is being arranged. The session belongs to the browser, so this never logs out:
+        doing so would sign the person out of ALM in their own browser as well."""
+        host = urllib.parse.urlparse(self.config.base_url).hostname or ""
+        for part in header.split(";"):
+            name, _, value = part.strip().partition("=")
+            if not name or not value:
+                continue
+            self.jar.set_cookie(http.cookiejar.Cookie(0, name, value, None, False, host, True, False, "/", True,
+                                                      False, None, False, None, None, {}))
+        self.borrowed_session = True
+        self.logged_in = True
+        return self
+
+    def login(self, credentials, methods=("basic",)):
+        """`credentials` is what credentials_from_environment() returns. `methods` names the sign-in forms to try."""
         kind, first, second = credentials
         if kind == "apikey":
             self.request("POST", "/qcbin/rest/oauth2/login", {"clientId": first, "secret": second})
         else:
-            self._password_login(first, second)
+            self._password_login(first, second, methods)
             self.request("POST", "/qcbin/rest/site-session", {})
         self.logged_in = True
         return self
 
-    def _password_login(self, user, password):
-        """The reference shows JSON here, but older servers only take the XML form, so fall back to it."""
-        body = {"alm-authentication": {"user": user, "password": password}}
-        try:
-            self.request("POST", "/qcbin/authentication-point/alm-authenticate", body)
-        except AlmError:
+    def _password_login(self, user, password, methods=("basic",)):
+        """Try each named way of sending the credentials until one is accepted (see AUTH_METHODS)."""
+        last = None
+        for method in methods:
+            if self.trace:
+                print(f"   trying the {method!r} sign-in")
+            try:
+                self._send_credentials(method, user, password)
+                return method
+            except AlmError as e:
+                last = e
+        raise last
+
+    def _send_credentials(self, method, user, password):
+        if method == "basic":
+            token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+            self.request("GET", "/qcbin/authentication-point/authenticate", accept="application/xml",
+                         extra_headers={"Authorization": "Basic " + token})
+        elif method == "json":
+            self.request("POST", "/qcbin/authentication-point/alm-authenticate",
+                         {"alm-authentication": {"user": user, "password": password}})
+        elif method == "json2":
+            self.request("POST", "/qcbin/authentication-point/alm-authenticate",
+                         {"alm-authenticate": {"user": user, "password": password}})
+        elif method == "xml":
             xml = (f"<alm-authentication><user>{user}</user>"
                    f"<password>{password}</password></alm-authentication>").encode("utf-8")
             self.request("POST", "/qcbin/authentication-point/alm-authenticate", xml,
                          accept="application/xml", content_type="application/xml")
+        else:
+            raise AlmError(f"unknown sign-in method {method!r}; one of {AUTH_METHODS}")
 
     def is_authenticated(self):
         """-> the user name ALM thinks we are, or None."""
@@ -171,6 +248,9 @@ class AlmSession:
         return (data.get("AuthenticationInfo") or {}).get("username")
 
     def logout(self):
+        if self.borrowed_session:         # the browser still needs this session
+            self.logged_in = False
+            return
         if self.logged_in:
             try:
                 self.request("GET", "/qcbin/authentication-point/logout", accept="application/xml")
@@ -237,11 +317,11 @@ class AlmSession:
         return out
 
 
-def connect(config=None, credentials=None):
+def connect(config=None, credentials=None, trace=False, methods=("basic",)):
     """Load the config, take the credentials from the environment, log in. Raises AlmError with advice when it cannot."""
     config = config or load_config()
     credentials = credentials or credentials_from_environment()
     if credentials is None:
         raise AlmError("no credentials: set ALM_USER and ALM_PASSWORD (or ALM_CLIENT_ID and ALM_API_KEY_SECRET) in the "
                        "environment. Never put them in a file in this folder")
-    return AlmSession(config).login(credentials)
+    return AlmSession(config, trace=trace).login(credentials, methods)
