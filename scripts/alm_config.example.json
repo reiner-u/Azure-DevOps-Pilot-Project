@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy this to alm_config.json and fill it in. NO CREDENTIALS IN HERE: set ALM_USER and ALM_PASSWORD (or ALM_CLIENT_ID and ALM_API_KEY_SECRET) in the environment instead. alm_config.json is never committed.",
+  "base_url": "https://alm.example.gov.on.ca",
+  "domain": "YOUR_DOMAIN",
+  "project": "YOUR_PROJECT",
+  "verify_ssl": true
+}
