@@ -31,16 +31,20 @@ BUG_COLUMNS = ("Work Item Type", "Title", "Assigned To", "State", "Area Path", "
 
 WORK_ITEM_TYPE = "Bug"
 
-# ALM status -> ADO Bug state. EMPTY ON PURPOSE: fill from the template's allowed states.
-# A typical Agile-template mapping looks like {"New": "New", "Open": "Active", "Fixed": "Resolved", "Closed": "Closed",
-# "Rejected": "Closed", "Reopened": "Active"}, but ours may differ, and see the note about the initial state above.
+# ALM status -> ADO Bug state. STILL EMPTY, and it is NOT used when a work item is created: proved by test on
+# 2026-11-25 that a Bug is always created in its type's initial state, and ADO refuses to save one staged as anything
+# else. So this map is for the second pass -- a bulk edit over the migrated bugs, grouped by their ALM-status tag --
+# and its values have to come from our own process template. ALM's eleven statuses, and how many defects had each:
+#   Closed 25,627 | Rejected 1,037 | Ready For Retest 244 | Assigned 227 | Deferred 200 | New 136 | Fixed 85
+#   Need More Info 57 | Re-Opened 22 | Open 4 | In Progress 4
 STATE_FROM_ALM = {}
 
-# ALM severity -> ADO severity (Agile template offers "1 - Critical", "2 - High", "3 - Medium", "4 - Low").
-SEVERITY_FROM_ALM = {}
+# ALM severity -> ADO severity. Read off the real data: ALM uses exactly four values and they line up one to one.
+SEVERITY_FROM_ALM = {"1-Critical": "1 - Critical", "2-High": "2 - High", "3-Medium": "3 - Medium",
+                     "4-Low": "4 - Low"}
 
-# ALM priority -> ADO priority (Agile template offers 1, 2, 3, 4 as numbers).
-PRIORITY_FROM_ALM = {}
+# ALM priority -> ADO priority. ALM uses three values; ADO's Priority is a number.
+PRIORITY_FROM_ALM = {"1-Must Have": "1", "2-Should Have": "2", "3-Want to Have": "3"}
 
 # ALM user name -> "Display Name <email>" of the matching ADO user. Anyone not in here is left unassigned, because an
 # identity ADO does not know fails the whole import.
@@ -63,3 +67,72 @@ def tags_for(defect):
     if defect.status:
         tags.append(f"ALM-status-{defect.status}")
     return ";".join(tags)
+
+
+# --- from ALM's REST fields to a Bug -------------------------------------------------------------------------------
+# The names on the left are ALM's internal field names (see DEFECT_FIELDS in alm.py), not the headings in an Excel
+# export. The names on the right are Azure DevOps reference names, which are what the REST API wants.
+BUG_REFERENCE_NAMES = {
+    "title": "System.Title",
+    "area_path": "System.AreaPath",
+    "repro_steps": "Microsoft.VSTS.TCM.ReproSteps",
+    "system_info": "Microsoft.VSTS.TCM.SystemInfo",
+    "severity": "Microsoft.VSTS.Common.Severity",
+    "priority": "Microsoft.VSTS.Common.Priority",
+    "found_in": "Microsoft.VSTS.Build.FoundIn",
+    "integration_build": "Microsoft.VSTS.Build.IntegrationBuild",
+    "tags": "System.Tags",
+}
+
+# Everything ALM had that ADO has no field of its own for goes into System Info, so nothing is lost in the move.
+SYSTEM_INFO_LINES = (
+    ("ALM defect ID", "id"), ("ALM status", "status"), ("ALM resolution", "user-03"),
+    ("Defect type", "user-04"), ("Detected by", "detected-by"), ("Detected on date", "creation-time"),
+    ("Closing date", "closing-date"), ("Modified date", "last-modified"),
+    ("Detected in release", "detected-in-rel"), ("Detected in build", "detection-version"),
+    ("Test phase", "user-05"), ("Test environment", "user-06"), ("Module", "user-12"),
+    ("Language", "user-11"), ("Project", "user-01"), ("Fix details", "user-25"),
+)
+
+TITLE_LIMIT = 255                    # ADO's System.Title
+
+
+def tags_from_alm(defect):
+    """Tags that keep the ALM provenance on the Bug, and group it for the state edit that follows a migration."""
+    tags = ["migrated-from-ALM"]
+    if defect.get("status"):
+        tags.append(f"ALM-status-{defect['status']}")
+    if defect.get("user-04"):
+        tags.append(f"ALM-type-{defect['user-04']}")
+    return "; ".join(tags)
+
+
+def bug_fields_from_alm(defect, area_path, alm_id_field="", title_limit=TITLE_LIMIT):
+    """One ALM defect (as alm.fields_of returns it) -> {ADO reference name: value}, ready for a JSON Patch.
+
+    Nothing is invented: a value with no mapping is left out, and the caller reports it. State is never set, because a
+    work item cannot be created in anything but its type's initial state."""
+    names = BUG_REFERENCE_NAMES
+    title = (defect.get("name") or f"(no summary in ALM, defect {defect.get('id')})").strip()
+    full_title = title if len(title) > title_limit else None
+    if full_title:
+        title = title[:title_limit - 3].rsplit(" ", 1)[0] + "..."
+
+    lines = [f"{label}: {defect[key]}" for label, key in SYSTEM_INFO_LINES if defect.get(key)]
+    if full_title:
+        lines.append(f"Full ALM summary: {full_title}")
+
+    fields = {
+        names["title"]: title,
+        names["area_path"]: area_path,
+        names["repro_steps"]: defect.get("description") or "",
+        names["system_info"]: "<br/>".join(lines),
+        names["severity"]: mapped(SEVERITY_FROM_ALM, defect.get("severity")) or "",
+        names["priority"]: mapped(PRIORITY_FROM_ALM, defect.get("priority")) or "",
+        names["found_in"]: defect.get("detection-version") or "",
+        names["integration_build"]: defect.get("closing-version") or "",
+        names["tags"]: tags_from_alm(defect),
+    }
+    if alm_id_field and defect.get("id"):
+        fields[alm_id_field] = defect["id"]
+    return {name: value for name, value in fields.items() if value not in (None, "")}

@@ -17,6 +17,8 @@ scripts/*
 !scripts/build_bugs_from_defects.py
 !scripts/alm_check.py
 !scripts/alm_config.example.json
+!scripts/migrate_defects.py
+!scripts/ado_config.example.json
 !scripts/converter_gui.py
 !scripts/local_config.example.json
 

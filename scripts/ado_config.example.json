@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy this to ado_config.json and fill it in. NO TOKEN IN HERE: set ADO_PAT in the environment instead. ado_config.json is never committed.",
+  "base_url": "https://dev.azure.com/YOUR_ORG",
+  "_base_url_note": "On an on-premises server this is https://SERVER/COLLECTION instead.",
+  "project": "YOUR_PROJECT",
+  "api_version": "7.1",
+  "verify_ssl": true,
+  "alm_id_field": "",
+  "_alm_id_field_note": "The reference name of the custom 'ALM ID' field on the Bug, not its display name. Find it with: python scripts/migrate_defects.py --bug-fields"
+}

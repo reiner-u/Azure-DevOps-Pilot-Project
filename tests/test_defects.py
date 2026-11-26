@@ -121,17 +121,19 @@ class ReadingAnExport(ConvertCase):
 class UnmappedValues(ConvertCase):
     """While the maps in mapping.py are empty, every ALM value is unmapped: the notes have to say exactly which."""
 
-    def test_the_fields_are_blank_rather_than_guessed(self):
+    def test_a_value_with_no_map_is_left_blank_rather_than_guessed(self):
         _result, rows = self.build(fixtures.defect(1))
-        for column in ("State", "Severity", "Priority", "Assigned To"):
+        for column in ("State", "Assigned To"):              # no map for these yet
             self.assertEqual(rows[0][column], "", column)
+        self.assertEqual(rows[0]["Severity"], "3 - Medium")  # SEVERITY_FROM_ALM is filled in from the real data
+        self.assertEqual(rows[0]["Priority"], "")            # "2-High" is not an ALM priority, so still unmapped
 
     def test_every_unmapped_value_is_named_in_the_notes(self):
         result, _rows = self.build(fixtures.defect(1), fixtures.defect(2, status="Closed"))
         notes = " ".join(result.notes)
         self.assertIn("'Open': 1", notes)
         self.assertIn("'Closed': 1", notes)
-        self.assertIn("ALM severity(ies) with no ADO value", notes)
+        self.assertIn("ALM priority(ies) with no ADO value", notes)
         self.assertIn("ALM user name(s) with no ADO identity", notes)
 
     def test_a_mapped_value_is_written_and_not_reported(self):

@@ -7,6 +7,9 @@ images, label).
 How the pieces fit together, in the order an export flows through them:
 
     alm         talking to ALM itself over its REST API (the export has no attachments; ALM does)
+    ado         creating Azure DevOps Bugs and attaching files, over its REST API
+    ledger      which defects are already migrated, so a run can be stopped and restarted
+    migrate     one defect from ALM to a Bug: the middle of the pipeline
     headers     which column of the export is which (ALM wordings -> field names)
     defect      the "Defect" record and DefectReader: one export row -> one Defect
     mapping     ALM values -> ADO values (state, severity, priority, people) and the Bug CSV columns
