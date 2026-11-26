@@ -30,6 +30,8 @@ class Migrated:
     failed: str = ""
     seconds: float = 0.0
     unmapped: list = field(default_factory=list)    # values ALM had that we have no ADO value for
+    fields: dict = field(default_factory=dict)      # what would be written to the Bug, so a dry run can show it
+    attachment_names: list = field(default_factory=list)
 
     @property
     def done(self):
@@ -62,10 +64,12 @@ def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, wit
                 data = alm_session.fetch_attachment(alm_id, name)
                 result.files += 1
                 result.bytes += len(data)
+                result.attachment_names.append(name)
                 url = ado_session.upload_attachment(name, data)
                 if url:
                     urls.append(url)
         fields = mapping.bug_fields_from_alm(defect, area_path, ado_session.config.alm_id_field)
+        result.fields = fields
         result.work_item_id = ado_session.create_bug(fields, urls, comment=f"Attached to ALM defect {alm_id}")
         if ledger is not None and not ado_session.dry_run:
             ledger.record(alm_id, result.work_item_id, result.files, result.bytes)

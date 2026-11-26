@@ -49,6 +49,9 @@ def build_parser():
     parser.add_argument("--ledger", default=LEDGER_FILE, help=f"where the record of migrated defects lives")
     parser.add_argument("--bug-fields", action="store_true", help="print our Bug's field names and stop")
     parser.add_argument("--verify", action="store_true", help="compare the ledger with what Azure DevOps has")
+    parser.add_argument("--show", nargs="?", type=int, const=1, metavar="N",
+                        help="print every field of the first N defects exactly as they would be written to the Bug "
+                             "(default 1). The way to see what a migrated bug looks like before creating one")
     parser.add_argument("--debug", action="store_true", help="print every call and its status")
     return parser
 
@@ -122,6 +125,15 @@ def main(argv=None):
     if not results:
         print("   no defects matched")
         return 0
+
+    for result in results[:args.show or 0]:
+        print(f"\n--- ALM {result.alm_id} would be created as ---")
+        for name in sorted(result.fields):
+            value = str(result.fields[name]).replace("\n", " ")
+            print(f"   {name:34} {value[:96]}{'...' if len(value) > 96 else ''}")
+        if result.attachment_names:
+            print(f"   {'attachments':34} {', '.join(result.attachment_names)}")
+        print(f"   {'(state)':34} not set: a work item is always created in its initial state")
     summary = migration.summarise(results)
     print(f"\n{summary['defects']} defect(s): {summary['created']} created, {summary['skipped']} skipped, "
           f"{summary['failed']} failed")
