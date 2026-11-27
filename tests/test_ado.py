@@ -285,6 +285,20 @@ class NotCreatingDuplicates(unittest.TestCase):
         self.assertIn("19548", self.ledger)
         self.assertEqual(self.ledger.entries["19548"]["work_item_id"], 900)
 
+    def test_a_stale_ledger_does_not_stop_a_re_run_after_the_bugs_were_deleted(self):
+        """Delete the work items in ADO and run again: the ledger still lists them, and ADO must win."""
+        self.ledger.record("19548", 190313)
+        target, opener = self.target_that_knows([])          # ADO has nothing
+        results = migration.migrate([DEFECT], self.source, target, "A", self.ledger)
+        self.assertEqual(results[0].work_item_id, 1)
+        self.assertEqual(results[0].skipped, "")
+
+    def test_the_ledger_is_still_obeyed_when_ado_cannot_be_asked(self):
+        self.ledger.record("19548", 190313)
+        session = ado.AdoSession(CONFIG, token=None, opener=AdoFakeOpener(), dry_run=True)
+        results = migration.migrate([DEFECT], self.source, session, "A", self.ledger)
+        self.assertIn("already migrated", results[0].skipped)
+
     def test_a_defect_ado_does_not_have_is_still_created(self):
         target, opener = self.target_that_knows([])
         results = migration.migrate([DEFECT], self.source, target, "A", self.ledger)
@@ -293,11 +307,11 @@ class NotCreatingDuplicates(unittest.TestCase):
     def test_without_the_alm_id_field_ado_cannot_be_asked(self):
         config = ado.AdoConfig(base_url="https://dev.azure.com/demo", project="Demo", alm_id_field="")
         session = ado.AdoSession(config, token="pat", opener=AdoFakeOpener(), dry_run=False)
-        self.assertEqual(migration.already_in_ado(session, [DEFECT]), {})
+        self.assertIsNone(migration.already_in_ado(session, [DEFECT]))   # None means "could not ask", not "has none"
 
     def test_a_dry_run_without_a_token_cannot_be_asked_either(self):
         session = ado.AdoSession(CONFIG, token=None, opener=AdoFakeOpener(), dry_run=True)
-        self.assertEqual(migration.already_in_ado(session, [DEFECT]), {})
+        self.assertIsNone(migration.already_in_ado(session, [DEFECT]))   # None means "could not ask", not "has none"
 
     def test_a_long_list_is_asked_for_in_chunks(self):
         target, opener = ado_session({"/_apis/wit/wiql": {"workItems": []}})

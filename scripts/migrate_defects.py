@@ -106,10 +106,13 @@ def main(argv=None):
             target = ado.connect(ado_config, dry_run=not args.create, trace=args.debug)
             defects = list(source.defects(query=query, limit=args.limit))
             already = migration.already_in_ado(target, defects)
-            if already:
+            if already is None:
+                print("   cannot ask Azure DevOps what it already has (needs alm_id_field and a token), so the "
+                      "local ledger decides what to skip\n")
+            elif already:
                 print(f"   {len(already)} of these are already in Azure DevOps (by ALM ID) and will be skipped\n")
-            elif not ado_config.alm_id_field:
-                print("   (cannot ask Azure DevOps what it already has: alm_id_field is not set)\n")
+            else:
+                print("   Azure DevOps has none of these yet\n")
 
             def progress(index, _total, result):
                 if result.skipped:

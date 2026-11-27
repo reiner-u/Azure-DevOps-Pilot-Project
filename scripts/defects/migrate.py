@@ -51,16 +51,20 @@ def unmapped_values(defect):
 def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, with_attachments=True, already=None):
     """Create one Bug from one ALM defect, attachments and all. Never raises: returns a Migrated either way.
 
-    `already` is {alm id: work item id} that Azure DevOps itself reports, which outranks the ledger."""
+    `already` is {alm id: work item id} that Azure DevOps itself reports, or None when it could not be asked.
+    When it could be asked it is the authority, in both directions: a defect it has is skipped, and a defect it does
+    NOT have is migrated even if the ledger claims otherwise -- which is what happens after someone deletes the work
+    items and runs again."""
     alm_id = str(defect.get("id"))
     started = time.perf_counter()
     result = Migrated(alm_id=alm_id, unmapped=unmapped_values(defect))
-    if already and alm_id in already:
-        result.skipped = f"already in Azure DevOps as work item {already[alm_id]}"
-        if ledger is not None and alm_id not in ledger:     # heal a ledger that lost the line
-            ledger.record(alm_id, already[alm_id], note="found in Azure DevOps, not in the ledger")
-        return result
-    if ledger is not None and alm_id in ledger:
+    if already is not None:
+        if alm_id in already:
+            result.skipped = f"already in Azure DevOps as work item {already[alm_id]}"
+            if ledger is not None and alm_id not in ledger:     # heal a ledger that lost the line
+                ledger.record(alm_id, already[alm_id], note="found in Azure DevOps, not in the ledger")
+            return result
+    elif ledger is not None and alm_id in ledger:               # no way to ask ADO, so the ledger is all we have
         result.skipped = f"already migrated as work item {ledger.entries[alm_id].get('work_item_id')}"
         return result
     try:
@@ -91,9 +95,12 @@ def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, wit
 
 
 def already_in_ado(ado_session, defects):
-    """Ask Azure DevOps which of these defects it already has, by their ALM ID. {} when it cannot be asked."""
+    """Ask Azure DevOps which of these defects it already has, by their ALM ID.
+
+    -> {alm id: work item id}, or None when it cannot be asked at all. The difference matters: an empty answer means
+    Azure DevOps has none of them, which is a fact worth acting on, while None means we are flying on the ledger."""
     if not getattr(ado_session.config, "alm_id_field", "") or not ado_session.token:
-        return {}
+        return None
     return ado_session.existing_alm_ids([str(d.get("id")) for d in defects if d.get("id")])
 
 
