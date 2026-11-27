@@ -312,6 +312,13 @@ class Problems(unittest.TestCase):
         self.assertIn("403", str(caught.exception))
         self.assertIn("ALM says no", str(caught.exception))
 
+    def test_an_expired_session_says_so_instead_of_complaining_about_json(self):
+        """ALM answers an expired session with its HTML login page, which is not an obvious thing to read."""
+        session, _ = session_with({"/qcbin/rest/domains/D/projects/P/defects": b"\n\n<!-- login page -->\n<html>"})
+        with self.assertRaises(alm.AlmError) as caught:
+            session.defect_count()
+        self.assertIn("session has expired", str(caught.exception))
+
     def test_a_missing_config_file_says_what_to_do(self):
         with self.assertRaises(alm.AlmError) as caught:
             alm.load_config(os.path.join(tempfile.gettempdir(), "no_such_alm_config.json"))

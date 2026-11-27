@@ -85,16 +85,42 @@ BUG_REFERENCE_NAMES = {
 }
 
 # Everything ALM had that ADO has no field of its own for goes into System Info, so nothing is lost in the move.
+# These come first, in this order, with a readable label.
 SYSTEM_INFO_LINES = (
     ("ALM defect ID", "id"), ("ALM status", "status"), ("ALM resolution", "user-03"),
-    ("Defect type", "user-04"), ("Detected by", "detected-by"), ("Detected on date", "creation-time"),
-    ("Closing date", "closing-date"), ("Modified date", "last-modified"),
+    ("Defect type", "user-04"), ("Assigned to in ALM", "owner"), ("Detected by", "detected-by"),
+    ("Detected on date", "creation-time"), ("Closing date", "closing-date"), ("Modified date", "last-modified"),
     ("Detected in release", "detected-in-rel"), ("Detected in build", "detection-version"),
-    ("Test phase", "user-05"), ("Test environment", "user-06"), ("Module", "user-12"),
-    ("Language", "user-11"), ("Project", "user-01"), ("Fix details", "user-25"),
+    ("Detected in cycle", "detected-in-rcyc"), ("Detected on environment", "environment"),
+    ("Target release", "target-rel"), ("Test phase", "user-05"), ("Test environment", "user-06"),
+    ("Module", "user-12"), ("Language", "user-11"), ("Project", "user-01"),
+    ("Reproducible", "reproducible"), ("Actual fix time", "actual-fix-time"),
+    ("Estimated fix time", "estimated-fix-time"),
+    ("Fix details", "user-25"), ("Comments", "dev-comments"),
 )
 
+# ALM's own plumbing, which means nothing in Azure DevOps. Everything NOT in here and not used above is carried into
+# System Info anyway, under whatever ALM calls it -- so a field nobody has identified yet (ALM's custom fields are
+# numbered user-01 to user-25 and several hold real data: Screen, Tested on Browser, Tested in Build) still comes
+# across rather than being silently dropped. Losing nothing is the point of a migration.
+ALM_INTERNALS = frozenset((
+    "ver-stamp", "has-linkage", "has-others-linkage", "has-change", "attachment",
+    "request-id", "request-type", "request-note", "request-server", "to-mail",
+    "run-reference", "test-reference", "step-reference", "extended-reference", "cycle-reference",
+    "cycle-id", "subject", "project",
+))
+
+# The fields that get an ADO field of their own, so they are not repeated in System Info.
+USED_DIRECTLY = frozenset(("name", "description", "severity", "priority", "closing-version"))
+
 TITLE_LIMIT = 255                    # ADO's System.Title
+
+
+def alm_label(key):
+    """A readable name for an ALM field, or the field's own name when nobody has worked out what it is yet."""
+    from .alm import DEFECT_FIELDS
+    known = DEFECT_FIELDS.get(key)
+    return known[0].upper() + known[1:] if known else f"ALM {key}"
 
 
 def tags_from_alm(defect):
@@ -119,6 +145,10 @@ def bug_fields_from_alm(defect, area_path, alm_id_field="", title_limit=TITLE_LI
         title = title[:title_limit - 3].rsplit(" ", 1)[0] + "..."
 
     lines = [f"{label}: {defect[key]}" for label, key in SYSTEM_INFO_LINES if defect.get(key)]
+    named = {key for _label, key in SYSTEM_INFO_LINES} | USED_DIRECTLY | ALM_INTERNALS
+    for key in sorted(defect):                     # anything else ALM filled in, so nothing is quietly lost
+        if key not in named and defect.get(key):
+            lines.append(f"{alm_label(key)}: {defect[key]}")
     if full_title:
         lines.append(f"Full ALM summary: {full_title}")
 

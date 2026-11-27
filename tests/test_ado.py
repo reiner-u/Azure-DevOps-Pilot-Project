@@ -245,6 +245,32 @@ class TheFieldMapping(unittest.TestCase):
         fields = mapping.bug_fields_from_alm(dict(DEFECT, name=None), "A")
         self.assertIn("no summary in ALM", fields["System.Title"])
 
+    def test_a_field_nobody_has_identified_yet_is_still_carried(self):
+        """ALM's custom fields are numbered user-01..user-25 and several hold real data (Screen, Tested on Browser,
+        Tested in Build). We do not know which is which yet, so they are carried under their own name rather than
+        dropped: losing nothing is the point of a migration."""
+        defect = dict(DEFECT, **{"user-07": "CPT_Support Doc", "user-09": "IE 8"})
+        info = mapping.bug_fields_from_alm(defect, "A")["Microsoft.VSTS.TCM.SystemInfo"]
+        self.assertIn("ALM user-07: CPT_Support Doc", info)
+        self.assertIn("ALM user-09: IE 8", info)
+
+    def test_alm_plumbing_is_not_carried(self):
+        defect = dict(DEFECT, **{"ver-stamp": "45", "has-linkage": "N", "cycle-id": "7", "to-mail": "someone"})
+        info = mapping.bug_fields_from_alm(defect, "A")["Microsoft.VSTS.TCM.SystemInfo"]
+        for noise in ("ver-stamp", "has-linkage", "cycle-id", "to-mail"):
+            self.assertNotIn(noise, info)
+
+    def test_the_comment_thread_and_the_alm_assignee_are_carried(self):
+        defect = dict(DEFECT, owner="zhangman", **{"dev-comments": "<html>Mandy Zhang: root cause</html>"})
+        info = mapping.bug_fields_from_alm(defect, "A")["Microsoft.VSTS.TCM.SystemInfo"]
+        self.assertIn("Assigned to in ALM: zhangman", info)
+        self.assertIn("Comments: <html>Mandy Zhang: root cause</html>", info)
+
+    def test_a_field_with_its_own_ado_home_is_not_repeated_in_system_info(self):
+        info = mapping.bug_fields_from_alm(DEFECT, "A")["Microsoft.VSTS.TCM.SystemInfo"]
+        self.assertNotIn("Sign-in page shows the wrong message", info)      # the summary is the Title
+        self.assertNotIn("<html>steps</html>", info)                        # the description is Repro Steps
+
     def test_an_unmapped_severity_is_left_out_rather_than_invented(self):
         fields = mapping.bug_fields_from_alm(dict(DEFECT, severity="9-Unheard Of"), "A")
         self.assertNotIn("Microsoft.VSTS.Common.Severity", fields)

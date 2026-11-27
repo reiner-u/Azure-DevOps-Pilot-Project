@@ -194,6 +194,11 @@ class AlmSession:
         try:
             return json.loads(raw)
         except ValueError:
+            head = raw[:600].decode("utf-8", "replace").lower()
+            if "<!doctype" in head or "<html" in head or "login" in head:
+                raise AlmError("the ALM session has expired: ALM sent back its login page instead of data. Reload the "
+                               "ALM tab in your browser and copy the Cookie header again, or use an API key, which "
+                               "does not expire the same way") from None
             raise AlmError(f"{method} {path} returned something that is not JSON: {raw[:200]!r}") from None
 
     # ----- signing in and out -----
