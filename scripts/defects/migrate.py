@@ -64,7 +64,7 @@ def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, wit
         result.skipped = f"already migrated as work item {ledger.entries[alm_id].get('work_item_id')}"
         return result
     try:
-        urls = []
+        urls, by_name = [], {}
         if with_attachments and str(defect.get("attachment", "")).upper() == "Y":
             for item in alm_session.attachments(alm_id):
                 name = item.get("name")
@@ -75,7 +75,9 @@ def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, wit
                 url = ado_session.upload_attachment(name, data)
                 if url:
                     urls.append(url)
-        fields = mapping.bug_fields_from_alm(defect, area_path, ado_session.config.alm_id_field)
+                    by_name[name] = url          # so a picture embedded in the text can point at it
+        fields = mapping.bug_fields_from_alm(defect, area_path, ado_session.config.alm_id_field,
+                                             image_urls=by_name)
         result.fields = fields
         result.work_item_id = ado_session.create_bug(fields, urls, comment=f"Attached to ALM defect {alm_id}")
         if ledger is not None and not ado_session.dry_run:

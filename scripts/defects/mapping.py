@@ -115,6 +115,23 @@ USED_DIRECTLY = frozenset(("name", "description", "severity", "priority", "closi
 
 TITLE_LIMIT = 255                    # ADO's System.Title
 
+# ALM writes an embedded screenshot into the HTML as a placeholder its own client swaps out at render time:
+#     <img src="file://[IMAGE_BASE_PATH_PLACEHOLDER]RichContentImage_1694634093_1.PNG" />
+# Nothing outside ALM can resolve that, so in ADO the picture would be missing from the text while the file itself
+# sat in the attachments list. The file name after the placeholder is exactly the attachment name, so once the
+# attachment has been uploaded we know the Azure DevOps URL to point at instead.
+IMAGE_PLACEHOLDER = "file://[IMAGE_BASE_PATH_PLACEHOLDER]"
+
+
+def point_images_at_ado(html, image_urls):
+    """Rewrite ALM's embedded-image placeholders to the uploaded Azure DevOps attachments."""
+    if not html or not image_urls:
+        return html
+    for name, url in image_urls.items():
+        if url:
+            html = html.replace(IMAGE_PLACEHOLDER + name, url)
+    return html
+
 
 def alm_label(key):
     """A readable name for an ALM field, or the field's own name when nobody has worked out what it is yet."""
@@ -133,7 +150,7 @@ def tags_from_alm(defect):
     return "; ".join(tags)
 
 
-def bug_fields_from_alm(defect, area_path, alm_id_field="", title_limit=TITLE_LIMIT):
+def bug_fields_from_alm(defect, area_path, alm_id_field="", title_limit=TITLE_LIMIT, image_urls=None):
     """One ALM defect (as alm.fields_of returns it) -> {ADO reference name: value}, ready for a JSON Patch.
 
     Nothing is invented: a value with no mapping is left out, and the caller reports it. State is never set, because a
@@ -143,6 +160,11 @@ def bug_fields_from_alm(defect, area_path, alm_id_field="", title_limit=TITLE_LI
     full_title = title if len(title) > title_limit else None
     if full_title:
         title = title[:title_limit - 3].rsplit(" ", 1)[0] + "..."
+
+    defect = dict(defect)
+    for key in ("description", "dev-comments", "user-25"):          # the three HTML fields ALM embeds pictures in
+        if defect.get(key):
+            defect[key] = point_images_at_ado(defect[key], image_urls)
 
     lines = [f"{label}: {defect[key]}" for label, key in SYSTEM_INFO_LINES if defect.get(key)]
     named = {key for _label, key in SYSTEM_INFO_LINES} | USED_DIRECTLY | ALM_INTERNALS

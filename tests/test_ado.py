@@ -214,6 +214,22 @@ class MigratingOneDefect(unittest.TestCase):
         self.assertIn("already migrated", result.skipped)
         self.assertEqual(len(self.target_opener.calls), before)
 
+    def test_the_whole_way_through_a_migration_the_picture_points_at_ado(self):
+        html = '<html><img src="file://[IMAGE_BASE_PATH_PLACEHOLDER]shot.png" /></html>'
+        source, _ = session_with({
+            "/qcbin/rest/domains/D/projects/P/defects/19548/attachments":
+                {"entities": [entity(name="shot.png", **{"file-size": "9"})]},
+            "/qcbin/rest/domains/D/projects/P/defects/19548/attachments/shot.png": b"123456789"})
+        created = {}
+        target, _ = ado_session({"/_apis/wit/attachments": {"url": "https://dev.azure.com/demo/_apis/wit/att/abc"},
+                                 "/_apis/wit/workitems/$Bug": {"id": 5}})
+        original_create = target.create_bug
+        target.create_bug = lambda fields, urls=(), comment="": created.update(fields) or original_create(
+            fields, urls, comment)
+        migration.migrate_defect(dict(DEFECT, description=html), source, target, "A", self.ledger)
+        self.assertIn('src="https://dev.azure.com/demo/_apis/wit/att/abc"',
+                      created["Microsoft.VSTS.TCM.ReproSteps"])
+
     def test_a_defect_with_no_attachment_flag_is_not_asked_for_files(self):
         quiet = dict(DEFECT, attachment="N")
         migration.migrate_defect(quiet, self.source, self.target, "Area\\Path", self.ledger)
@@ -341,6 +357,34 @@ class TheFieldMapping(unittest.TestCase):
         info = mapping.bug_fields_from_alm(DEFECT, "A")["Microsoft.VSTS.TCM.SystemInfo"]
         self.assertNotIn("Sign-in page shows the wrong message", info)      # the summary is the Title
         self.assertNotIn("<html>steps</html>", info)                        # the description is Repro Steps
+
+    def test_an_embedded_screenshot_points_at_the_uploaded_attachment(self):
+        """ALM's placeholder resolves nowhere outside ALM, so the picture would be missing from the text."""
+        html = ('<html><body>See this: <img src="file://[IMAGE_BASE_PATH_PLACEHOLDER]RichContentImage_1_1.PNG" '
+                'width="804" /></body></html>')
+        fields = mapping.bug_fields_from_alm(
+            dict(DEFECT, description=html), "A",
+            image_urls={"RichContentImage_1_1.PNG": "https://dev.azure.com/demo/_apis/wit/attachments/abc"})
+        steps = fields["Microsoft.VSTS.TCM.ReproSteps"]
+        self.assertIn('src="https://dev.azure.com/demo/_apis/wit/attachments/abc"', steps)
+        self.assertNotIn("IMAGE_BASE_PATH_PLACEHOLDER", steps)
+
+    def test_pictures_embedded_in_the_comments_are_rewritten_too(self):
+        comments = '<html><img src="file://[IMAGE_BASE_PATH_PLACEHOLDER]shot.PNG" /></html>'
+        fields = mapping.bug_fields_from_alm(dict(DEFECT, **{"dev-comments": comments}), "A",
+                                             image_urls={"shot.PNG": "https://x/1"})
+        self.assertIn('src="https://x/1"', fields["Microsoft.VSTS.TCM.SystemInfo"])
+
+    def test_an_attachment_that_is_not_in_the_text_changes_nothing(self):
+        html = "<html><body>no pictures here</body></html>"
+        fields = mapping.bug_fields_from_alm(dict(DEFECT, description=html), "A",
+                                             image_urls={"20382.docx": "https://x/1"})
+        self.assertEqual(fields["Microsoft.VSTS.TCM.ReproSteps"], html)
+
+    def test_a_dry_run_has_no_urls_and_leaves_the_text_alone(self):
+        html = '<html><img src="file://[IMAGE_BASE_PATH_PLACEHOLDER]shot.PNG" /></html>'
+        fields = mapping.bug_fields_from_alm(dict(DEFECT, description=html), "A", image_urls=None)
+        self.assertEqual(fields["Microsoft.VSTS.TCM.ReproSteps"], html)
 
     def test_an_unmapped_severity_is_left_out_rather_than_invented(self):
         fields = mapping.bug_fields_from_alm(dict(DEFECT, severity="9-Unheard Of"), "A")
