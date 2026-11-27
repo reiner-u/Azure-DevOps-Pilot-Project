@@ -62,7 +62,7 @@ DEFECT_FIELDS = {
     "detected-in-rel": "detected in release", "target-rel": "target release", "environment": "environment",
     "actual-fix-time": "actual fix time", "estimated-fix-time": "estimated fix time",
     "user-01": "project name", "user-03": "resolution", "user-04": "defect type", "user-05": "test phase",
-    "user-06": "test environment", "user-11": "language", "user-12": "module", "user-25": "fix details (HTML)",
+    "user-06": "test environment", "user-11": "language", "user-12": "screen", "user-25": "fix details (HTML)",
 }
 HAS_ATTACHMENT = "{attachment['Y']}"        # ALM's own query syntax, for counting the defects that have files
 
@@ -124,12 +124,19 @@ def credentials_from_environment():
     return None
 
 
+# A list field (release, cycle, folder) answers with its row ID and the readable name beside it, under one of these
+# spellings depending on the server. Without this a defect reports "Detected in release: 497" instead of "CorePT SFA".
+REFERENCE_KEYS = ("ReferenceValue", "referenceValue", "reference-value", "referencevalue")
+
+
 def fields_of(entity):
-    """One ALM entity's {field name: first value}. ALM returns Fields as a list of {Name, values:[{value}]}."""
+    """One ALM entity's {field name: first value}, preferring the readable name over the raw row ID."""
     out = {}
     for field in entity.get("Fields", []):
         values = field.get("values") or [{}]
-        out[field.get("Name")] = values[0].get("value")
+        first = values[0]
+        readable = next((first[key] for key in REFERENCE_KEYS if first.get(key)), None)
+        out[field.get("Name")] = readable or first.get("value")
     return out
 
 

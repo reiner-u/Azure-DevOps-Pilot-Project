@@ -93,7 +93,7 @@ SYSTEM_INFO_LINES = (
     ("Detected in release", "detected-in-rel"), ("Detected in build", "detection-version"),
     ("Detected in cycle", "detected-in-rcyc"), ("Detected on environment", "environment"),
     ("Target release", "target-rel"), ("Test phase", "user-05"), ("Test environment", "user-06"),
-    ("Module", "user-12"), ("Language", "user-11"), ("Project", "user-01"),
+    ("Screen", "user-12"), ("Language", "user-11"), ("Project", "user-01"),
     ("Reproducible", "reproducible"), ("Actual fix time", "actual-fix-time"),
     ("Estimated fix time", "estimated-fix-time"),
     ("Fix details", "user-25"), ("Comments", "dev-comments"),

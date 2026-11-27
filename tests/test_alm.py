@@ -184,6 +184,15 @@ class ReadingDefects(unittest.TestCase):
     def test_fields_are_flattened(self):
         self.assertEqual(alm.fields_of(entity(id="19548", status="Closed")), {"id": "19548", "status": "Closed"})
 
+    def test_a_list_field_gives_its_readable_name_not_its_row_id(self):
+        """ALM answers a release or cycle with the row ID and the name beside it; the ID alone is meaningless."""
+        raw = {"Fields": [{"Name": "detected-in-rel", "values": [{"value": "497", "ReferenceValue": "CorePT SFA"}]},
+                          {"Name": "detected-in-rcyc", "values": [{"value": "946", "referenceValue": "Cycle1"}]}]}
+        self.assertEqual(alm.fields_of(raw), {"detected-in-rel": "CorePT SFA", "detected-in-rcyc": "Cycle1"})
+
+    def test_a_plain_field_is_unaffected(self):
+        self.assertEqual(alm.fields_of(entity(status="Closed")), {"status": "Closed"})
+
     def test_a_field_with_no_value(self):
         self.assertEqual(alm.fields_of({"Fields": [{"Name": "x"}]}), {"x": None})
 
