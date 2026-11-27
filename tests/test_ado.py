@@ -108,6 +108,27 @@ class CreatingABug(unittest.TestCase):
         self.assertIn("403", str(caught.exception))
 
 
+class AttachmentNames(unittest.TestCase):
+    """ALM defect 18623's "RE OSAP# 18623.msg" arrived in ADO as "RE OSAP": the hash cut the name, and with it the
+    extension, so Windows could not open an otherwise perfectly good Outlook message."""
+
+    def test_a_hash_no_longer_eats_the_extension(self):
+        self.assertEqual(ado.safe_attachment_name("RE OSAP# 18623.msg"), "RE OSAP- 18623.msg")
+
+    def test_ordinary_names_including_spaces_are_left_alone(self):
+        for name in ("20382.docx", "Leaving ADD Bursary screen message for BSWD.msg", "RichContentImage_1_1.PNG"):
+            self.assertEqual(ado.safe_attachment_name(name), name)
+
+    def test_an_empty_name_still_gets_one(self):
+        self.assertEqual(ado.safe_attachment_name(""), "attachment")
+        self.assertEqual(ado.safe_attachment_name(None), "attachment")
+
+    def test_the_cleaned_name_is_what_is_uploaded(self):
+        session, opener = ado_session({"/_apis/wit/attachments": {"url": "https://x/1"}})
+        session.upload_attachment("RE OSAP# 18623.msg", b"data")
+        self.assertIn("RE+OSAP-+18623.msg", opener.calls[0]["url"])
+
+
 class ADryRun(unittest.TestCase):
     """The whole point of the default mode: it must not send anything."""
 

@@ -62,6 +62,19 @@ def token_from_environment():
     return os.environ.get("ADO_PAT") or None
 
 
+# Characters that break an attachment name on the way to Azure DevOps. A "#" is the one that bites: the name travels
+# as a query parameter, and ALM defect 18623's "RE OSAP# 18623.msg" arrived as "RE OSAP" -- losing the extension, so
+# Windows no longer knew it was an Outlook message. Spaces are fine and are left alone.
+UNSAFE_IN_A_NAME = str.maketrans({"#": "-", "?": "-", "&": "and", "%": "-", "/": "-", "\\": "-", "|": "-", "*": "-",
+                                  "<": "-", ">": "-", '"': "'"})
+
+
+def safe_attachment_name(name):
+    """An attachment name Azure DevOps will keep whole, extension and all."""
+    cleaned = (name or "attachment").translate(UNSAFE_IN_A_NAME).strip()
+    return cleaned or "attachment"
+
+
 def add(path, value):
     """One JSON Patch operation, which is how Azure DevOps takes work item fields."""
     return {"op": "add", "path": path, "value": value}
@@ -122,7 +135,8 @@ class AdoSession:
         self.uploaded_bytes += len(data)
         if self.dry_run:
             return None
-        answer = self.request("POST", self._project_url("/_apis/wit/attachments", fileName=file_name), data,
+        answer = self.request("POST", self._project_url("/_apis/wit/attachments",
+                                                        fileName=safe_attachment_name(file_name)), data,
                               content_type="application/octet-stream")
         return answer.get("url")
 
