@@ -151,10 +151,20 @@ class AdoSession:
         self.created += 1
         return answer.get("id")
 
-    def existing_alm_ids(self, alm_ids):
-        """Which of these ALM IDs are already in Azure DevOps -> {alm id: work item id}. The resume check."""
+    def existing_alm_ids(self, alm_ids, chunk=200):
+        """Which of these ALM IDs are already in Azure DevOps -> {alm id: work item id}.
+
+        Azure DevOps is the authority on what has been migrated, not the local ledger: a ledger can be deleted, or
+        live on another machine, or be missing the last line because the run died after the work item was created.
+        A WIQL IN clause cannot be unbounded, so this asks in chunks."""
         if not self.config.alm_id_field or not alm_ids:
             return {}
+        alm_ids = [str(i) for i in alm_ids]
+        if len(alm_ids) > chunk:
+            found = {}
+            for start in range(0, len(alm_ids), chunk):
+                found.update(self.existing_alm_ids(alm_ids[start:start + chunk], chunk))
+            return found
         wanted = ", ".join(f"'{str(i)}'" for i in alm_ids)
         query = (f"SELECT [System.Id], [{self.config.alm_id_field}] FROM workitems "
                  f"WHERE [System.WorkItemType] = '{WORK_ITEM_TYPE}' AND [{self.config.alm_id_field}] IN ({wanted})")

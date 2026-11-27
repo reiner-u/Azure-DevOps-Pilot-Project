@@ -104,7 +104,12 @@ def main(argv=None):
     try:
         with alm_session(args, alm.load_config()) as source:
             target = ado.connect(ado_config, dry_run=not args.create, trace=args.debug)
-            defects = source.defects(query=query, limit=args.limit)
+            defects = list(source.defects(query=query, limit=args.limit))
+            already = migration.already_in_ado(target, defects)
+            if already:
+                print(f"   {len(already)} of these are already in Azure DevOps (by ALM ID) and will be skipped\n")
+            elif not ado_config.alm_id_field:
+                print("   (cannot ask Azure DevOps what it already has: alm_id_field is not set)\n")
 
             def progress(index, _total, result):
                 if result.skipped:
@@ -117,7 +122,7 @@ def main(argv=None):
                           f"{human_bytes(result.bytes):>9}  {made}")
 
             results = migration.migrate(defects, source, target, area, ledger, progress,
-                                        with_attachments=not args.no_attachments)
+                                        with_attachments=not args.no_attachments, already=already)
     except (alm.AlmError, ado.AdoError) as e:
         print("\nStopped:", e)
         return 1

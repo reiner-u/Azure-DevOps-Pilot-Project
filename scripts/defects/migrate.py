@@ -48,11 +48,18 @@ def unmapped_values(defect):
     return missing
 
 
-def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, with_attachments=True):
-    """Create one Bug from one ALM defect, attachments and all. Never raises: returns a Migrated either way."""
+def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, with_attachments=True, already=None):
+    """Create one Bug from one ALM defect, attachments and all. Never raises: returns a Migrated either way.
+
+    `already` is {alm id: work item id} that Azure DevOps itself reports, which outranks the ledger."""
     alm_id = str(defect.get("id"))
     started = time.perf_counter()
     result = Migrated(alm_id=alm_id, unmapped=unmapped_values(defect))
+    if already and alm_id in already:
+        result.skipped = f"already in Azure DevOps as work item {already[alm_id]}"
+        if ledger is not None and alm_id not in ledger:     # heal a ledger that lost the line
+            ledger.record(alm_id, already[alm_id], note="found in Azure DevOps, not in the ledger")
+        return result
     if ledger is not None and alm_id in ledger:
         result.skipped = f"already migrated as work item {ledger.entries[alm_id].get('work_item_id')}"
         return result
@@ -81,12 +88,22 @@ def migrate_defect(defect, alm_session, ado_session, area_path, ledger=None, wit
     return result
 
 
-def migrate(defects, alm_session, ado_session, area_path, ledger=None, progress=None, with_attachments=True):
+def already_in_ado(ado_session, defects):
+    """Ask Azure DevOps which of these defects it already has, by their ALM ID. {} when it cannot be asked."""
+    if not getattr(ado_session.config, "alm_id_field", "") or not ado_session.token:
+        return {}
+    return ado_session.existing_alm_ids([str(d.get("id")) for d in defects if d.get("id")])
+
+
+def migrate(defects, alm_session, ado_session, area_path, ledger=None, progress=None, with_attachments=True,
+            already=None):
     """Migrate each defect in turn. `progress(index, total, result)` is called after each one."""
     defects = list(defects)
+    if already is None:
+        already = already_in_ado(ado_session, defects)
     results = []
     for index, defect in enumerate(defects, 1):
-        result = migrate_defect(defect, alm_session, ado_session, area_path, ledger, with_attachments)
+        result = migrate_defect(defect, alm_session, ado_session, area_path, ledger, with_attachments, already)
         results.append(result)
         if progress:
             progress(index, len(defects), result)

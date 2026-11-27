@@ -218,6 +218,56 @@ class MigratingOneDefect(unittest.TestCase):
         self.assertNotIn("19548", self.ledger)
 
 
+class NotCreatingDuplicates(unittest.TestCase):
+    """Azure DevOps is the authority on what has already been migrated, not the local ledger file."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.ledger = Ledger(os.path.join(self.dir.name, "ledger.jsonl"))
+        self.source, _ = session_with()
+
+    def target_that_knows(self, alm_ids):
+        """An ADO fake whose WIQL answer and work item lookup report these ALM IDs as already there."""
+        work_items = [{"id": 900 + n} for n, _ in enumerate(alm_ids)]
+        details = {"value": [{"id": item["id"], "fields": {"Custom.ALMID": alm_id}}
+                             for item, alm_id in zip(work_items, alm_ids)]}
+        return ado_session({"/_apis/wit/wiql": {"workItems": work_items}, "/_apis/wit/workitems": details,
+                            "/_apis/wit/workitems/$Bug": {"id": 1}})
+
+    def test_a_defect_already_in_ado_is_not_created_again_even_with_an_empty_ledger(self):
+        target, opener = self.target_that_knows(["19548"])
+        results = migration.migrate([DEFECT], self.source, target, "A", self.ledger)
+        self.assertIn("already in Azure DevOps", results[0].skipped)
+        self.assertFalse(any(p.endswith("/_apis/wit/workitems/$Bug") for p in opener.paths()))
+
+    def test_the_ledger_heals_itself_from_what_ado_reports(self):
+        """The run that died after creating the work item but before writing the ledger line."""
+        target, _ = self.target_that_knows(["19548"])
+        migration.migrate([DEFECT], self.source, target, "A", self.ledger)
+        self.assertIn("19548", self.ledger)
+        self.assertEqual(self.ledger.entries["19548"]["work_item_id"], 900)
+
+    def test_a_defect_ado_does_not_have_is_still_created(self):
+        target, opener = self.target_that_knows([])
+        results = migration.migrate([DEFECT], self.source, target, "A", self.ledger)
+        self.assertEqual(results[0].work_item_id, 1)
+
+    def test_without_the_alm_id_field_ado_cannot_be_asked(self):
+        config = ado.AdoConfig(base_url="https://dev.azure.com/demo", project="Demo", alm_id_field="")
+        session = ado.AdoSession(config, token="pat", opener=AdoFakeOpener(), dry_run=False)
+        self.assertEqual(migration.already_in_ado(session, [DEFECT]), {})
+
+    def test_a_dry_run_without_a_token_cannot_be_asked_either(self):
+        session = ado.AdoSession(CONFIG, token=None, opener=AdoFakeOpener(), dry_run=True)
+        self.assertEqual(migration.already_in_ado(session, [DEFECT]), {})
+
+    def test_a_long_list_is_asked_for_in_chunks(self):
+        target, opener = ado_session({"/_apis/wit/wiql": {"workItems": []}})
+        target.existing_alm_ids([str(n) for n in range(450)], chunk=200)
+        self.assertEqual(sum(1 for p in opener.paths() if p.endswith("/_apis/wit/wiql")), 3)
+
+
 class TheFieldMapping(unittest.TestCase):
     def test_an_alm_defect_becomes_bug_fields(self):
         fields = mapping.bug_fields_from_alm(DEFECT, "Area\\Path", alm_id_field="Custom.ALMID")
